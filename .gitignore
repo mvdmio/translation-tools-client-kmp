@@ -1,0 +1,13 @@
+# Gradle project outputs
+**/.gradle/
+**/build/
+
+# IDE files
+**/.idea/
+**/*.iml
+
+# Local machine SDK config
+**/local.properties
+
+# OS noise
+**/.DS_Store
