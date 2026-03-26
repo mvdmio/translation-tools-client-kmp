@@ -254,3 +254,13 @@ catch (exception: TranslationToolsNetworkException) {
 - auth uses raw `Authorization` header
 - locale requests send `Accept-Encoding: gzip`
 - avoid hardcoding production API keys directly in source when possible
+
+## OpenCode
+
+This repo includes `opencode.jsonc` for project-local OpenCode defaults.
+
+- loads repo instructions from `AGENTS.md`
+- ignores noisy generated directories during file watching
+- adds project shortcuts for build, test, and verify workflows
+
+Keep `opencode.jsonc` and `AGENTS.md` in sync when updating contributor guidance.
