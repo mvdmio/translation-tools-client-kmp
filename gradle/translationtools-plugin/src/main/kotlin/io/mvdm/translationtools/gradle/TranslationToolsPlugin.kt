@@ -2,6 +2,7 @@ package io.mvdm.translationtools.gradle
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 class TranslationToolsPlugin : Plugin<Project>
@@ -19,14 +20,14 @@ class TranslationToolsPlugin : Plugin<Project>
          val outputDir = project.layout.buildDirectory.dir("generated/source/translationtools/commonMain/kotlin")
          val packagePath = resolved.config.generated.packageName.replace('.', '/')
 
-         task.snapshotFile.set(snapshot)
-         task.packageName.set(resolved.config.generated.packageName)
-         task.objectName.set(resolved.config.generated.objectName)
-         task.outputFile.set(outputDir.map { it.file("$packagePath/${resolved.config.generated.objectName}.kt") })
-         task.outputs.upToDateWhen {
-            val output = task.outputFile.asFile.get()
-            output.exists() && snapshot.asFile.exists()
-         }
+          task.snapshotFile.set(snapshot)
+          task.packageName.set(resolved.config.generated.packageName)
+          task.objectName.set(resolved.config.generated.objectName)
+          task.outputFile.set(outputDir.map { it.file("$packagePath/${resolved.config.generated.objectName}.kt") })
+          task.outputs.upToDateWhen {
+             val output = task.outputFile.asFile.get()
+             output.exists() && snapshot.asFile.exists()
+          }
       }
 
       project.tasks.register("pullTranslations", PullTranslationsTask::class.java) { task ->
@@ -46,6 +47,11 @@ class TranslationToolsPlugin : Plugin<Project>
             project.layout.buildDirectory.dir("generated/source/translationtools/commonMain/kotlin"),
          )
          project.tasks.matching { it.name.startsWith("compile") && it.name.contains("Kotlin") }
+            .configureEach { task ->
+               task.dependsOn(generateTask)
+            }
+         project.tasks.withType(AbstractArchiveTask::class.java)
+            .matching { it.name.contains("SourcesJar", ignoreCase = true) }
             .configureEach { task ->
                task.dependsOn(generateTask)
             }

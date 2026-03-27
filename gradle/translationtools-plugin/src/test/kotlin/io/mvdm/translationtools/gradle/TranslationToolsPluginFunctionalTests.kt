@@ -80,11 +80,73 @@ class TranslationToolsPluginFunctionalTests
          !File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt").exists()
       )
    }
+
+   @Test
+   fun jvmSourcesJar_should_depend_on_generateTranslationResources()
+   {
+      val projectDir = createTempDirectory("translationtools-functional").toFile()
+      writeBuildFiles(projectDir)
+      File(projectDir, "translationtools.yaml").writeText(
+         """
+         apiKey: test-key
+         locales:
+           - en
+         snapshotFile: translationtools/snapshot.json
+         generated:
+           packageName: com.example.translations
+           objectName: Res
+         """.trimIndent()
+      )
+      File(projectDir, "translationtools").mkdirs()
+      File(projectDir, "translationtools/snapshot.json").writeText(
+         """
+         {
+           "schemaVersion": 1,
+           "project": {
+             "defaultLocale": "en",
+             "locales": ["en"]
+           },
+           "translations": {
+             "en": {
+               "home.title": "Home"
+             }
+           }
+         }
+         """.trimIndent()
+      )
+
+      val result = GradleRunner.create()
+         .withProjectDir(projectDir)
+         .withPluginClasspath()
+         .withArguments("jvmSourcesJar")
+         .build()
+
+      assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
+      assertEquals(TaskOutcome.SUCCESS, result.task(":jvmSourcesJar")?.outcome)
+   }
 }
 
 private fun writeBuildFiles(projectDir: File)
 {
-   File(projectDir, "settings.gradle.kts").writeText("")
+   File(projectDir, "settings.gradle.kts").writeText(
+      """
+      pluginManagement {
+         repositories {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+         }
+      }
+
+      dependencyResolutionManagement {
+         repositories {
+            google()
+            mavenCentral()
+         }
+      }
+      """.trimIndent()
+   )
+
    File(projectDir, "build.gradle.kts").writeText(
       """
       plugins {

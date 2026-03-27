@@ -7,7 +7,7 @@ Kotlin Multiplatform TranslationTools runtime client.
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.3.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.3.1/
 ```
 
 Repository:
@@ -22,7 +22,7 @@ Dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.3.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.3.1")
 }
 ```
 
@@ -30,7 +30,7 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.3.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.3.1" }
 ```
 
 ```kotlin
@@ -209,7 +209,7 @@ Additional artifact:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:0.3.0")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:0.3.1")
 }
 ```
 
@@ -325,6 +325,7 @@ Workflow:
 - commit `translationtools/snapshot.json`
 - do not commit `build/generated/...`
 - normal `build` and `test` regenerate Kotlin from the local snapshot only
+- generated-source consumers like Android sources jars depend on `generateTranslationResources`
 - if the snapshot is missing, generation fails and tells you to run `pullTranslations`
 
 ## Locale selection
