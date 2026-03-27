@@ -7,7 +7,7 @@ Kotlin Multiplatform TranslationTools runtime client.
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.1.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.3.0/
 ```
 
 Repository:
@@ -22,7 +22,7 @@ Dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.1.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.3.0")
 }
 ```
 
@@ -30,7 +30,7 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.1.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.3.0" }
 ```
 
 ```kotlin
@@ -175,6 +175,157 @@ Read behavior:
 
 - `getCached(...)` = cache only
 - `get(...)` = cache first, then single-item fetch on miss
+
+Typed resource read:
+
+```kotlin
+import io.mvdm.translationtools.client.TranslationStringResource
+
+val homeTitle = TranslationStringResource(
+    key = "home.title",
+    fallback = "Home",
+)
+
+val title = client.getCached(homeTitle)
+```
+
+Typed resource behavior:
+
+- `getCached(resource)` = cached value, else resource fallback, else resource key
+- `get(resource)` = cache first, then single-item fetch on miss, using resource fallback as default value
+- `observe(resource)` = reactive read with the same fallback chain
+
+Generated resources:
+
+```kotlin
+import io.mvdm.translationtools.client.resources.Res
+
+val title = client.getCached(Res.string.home_title)
+```
+
+## Compose module
+
+Additional artifact:
+
+```kotlin
+dependencies {
+    implementation("io.mvdm.translationtools:translationtools-client-compose:0.3.0")
+}
+```
+
+Compose usage:
+
+```kotlin
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.Text
+import io.mvdm.translationtools.client.compose.LocalTranslationToolsClient
+import io.mvdm.translationtools.client.compose.LocalTranslationToolsLocale
+import io.mvdm.translationtools.client.compose.stringResource
+import io.mvdm.translationtools.client.resources.Res
+
+CompositionLocalProvider(
+    LocalTranslationToolsClient provides client,
+    LocalTranslationToolsLocale provides "en",
+) {
+    val title = stringResource(Res.string.home_title)
+}
+```
+
+Full screen example:
+
+```kotlin
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import io.mvdm.translationtools.client.TranslationToolsClient
+import io.mvdm.translationtools.client.compose.LocalTranslationToolsClient
+import io.mvdm.translationtools.client.compose.LocalTranslationToolsLocale
+import io.mvdm.translationtools.client.compose.stringResource
+import io.mvdm.translationtools.client.resources.Res
+
+@Composable
+fun HomeScreen(
+    client: TranslationToolsClient,
+    locale: String = "en",
+) {
+    CompositionLocalProvider(
+        LocalTranslationToolsClient provides client,
+        LocalTranslationToolsLocale provides locale,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+        ) {
+            Text(
+                text = stringResource(Res.string.home_title),
+                style = MaterialTheme.typography.headlineMedium,
+            )
+
+            Text(
+                text = stringResource(Res.string.checkout_title),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+    }
+}
+```
+
+Compose behavior:
+
+- `stringResource(...)` reads from the typed runtime API
+- explicit locale wins over `LocalTranslationToolsLocale`
+- if neither is set, locale resolution falls back to the client runtime rules
+
+## Pull and code generation
+
+Add `translationtools.yaml` at the repo root:
+
+```yaml
+apiKey: your-project-api-key
+locales:
+  - en
+snapshotFile: translationtools/snapshot.json
+generated:
+  packageName: io.mvdm.translationtools.client.resources
+  objectName: Res
+```
+
+Optional API key sources, highest priority first:
+
+1. `-Ptranslationtools.apiKey=...`
+2. `TRANSLATIONTOOLS_API_KEY`
+3. `apiKey` in `translationtools.yaml`
+
+Notes:
+
+- base URL is fixed to `https://translations.mvdm.io`
+- `translationtools.yaml` should include an `apiKey` entry, even if you override it locally
+
+Sync command:
+
+```bash
+./gradlew.bat pullTranslations
+```
+
+Generation command:
+
+```bash
+./gradlew.bat generateTranslationResources
+```
+
+Workflow:
+
+- commit `translationtools/snapshot.json`
+- do not commit `build/generated/...`
+- normal `build` and `test` regenerate Kotlin from the local snapshot only
+- if the snapshot is missing, generation fails and tells you to run `pullTranslations`
 
 ## Locale selection
 

@@ -57,6 +57,66 @@ class TranslationToolsClientTests
    }
 
    @Test
+   fun getCached_with_resource_should_return_cached_value_before_fallback() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Hello"))),
+      )
+      val client = createClient(api)
+
+      client.initialize()
+
+      assertEquals(
+         "Hello",
+         client.getCached(TranslationStringResource(key = "home.title", fallback = "Home"), "en"),
+      )
+   }
+
+   @Test
+   fun getCached_with_resource_should_return_fallback_then_key_when_value_missing() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(api)
+
+      assertEquals(
+         "Home",
+         client.getCached(TranslationStringResource(key = "home.title", fallback = "Home"), "en"),
+      )
+      assertEquals(
+         "home.title",
+         client.getCached(TranslationStringResource(key = "home.title"), "en"),
+      )
+   }
+
+   @Test
+   fun get_with_resource_should_pass_fallback_to_existing_fetch_path() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         singleItems = mutableMapOf("en|checkout.title" to TranslationItem("checkout.title", null)),
+      )
+      val client = createClient(api)
+
+      val value = client.get(TranslationStringResource(key = "checkout.title", fallback = "Checkout"), "en")
+
+      assertEquals("Checkout", value)
+      assertEquals(listOf("en|checkout.title|Checkout"), api.singleItemRequests)
+   }
+
+   @Test
+   fun observe_with_resource_should_emit_fallback_aware_values() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(api)
+
+      assertEquals(
+         "Home",
+         client.observe(TranslationStringResource(key = "home.title", fallback = "Home"), "en").first(),
+      )
+      assertEquals(
+         "home.title",
+         client.observe(TranslationStringResource(key = "home.title"), "en").first(),
+      )
+   }
+
+   @Test
    fun initialize_should_restore_snapshot_store_before_refresh() = runTest {
       val store = FakeTranslationSnapshotStore(
          stored = StoredTranslations(

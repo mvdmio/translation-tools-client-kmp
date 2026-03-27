@@ -1,0 +1,104 @@
+package io.mvdm.translationtools.gradle
+
+import java.security.MessageDigest
+
+private val invalidIdentifierChars = Regex("[^a-z0-9_]+")
+private val repeatedUnderscores = Regex("_+")
+private val kotlinKeywords = setOf(
+   "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
+   "interface", "is", "null", "object", "package", "return", "super", "this", "throw", "true",
+   "try", "typealias", "val", "var", "when", "while",
+)
+
+internal fun sanitizeResourcePropertyName(rawKey: String): String
+{
+   var sanitized = rawKey.lowercase()
+      .replace('.', '_')
+      .replace('-', '_')
+      .replace('/', '_')
+      .replace(Regex("\\s+"), "_")
+      .replace(invalidIdentifierChars, "_")
+      .replace(repeatedUnderscores, "_")
+      .trim('_')
+
+   if (sanitized.isEmpty())
+      sanitized = "key"
+
+   if (sanitized.first().isDigit())
+      sanitized = "key_$sanitized"
+
+   if (sanitized in kotlinKeywords)
+      sanitized = "${sanitized}_"
+
+   return sanitized
+}
+
+internal fun renderTranslationResources(
+   snapshot: TranslationSnapshotFile,
+   packageName: String,
+   objectName: String,
+): String
+{
+   val defaultLocaleEntries = snapshot.translations[snapshot.project.defaultLocale].orEmpty()
+   val rawKeys = snapshot.translations.values
+      .flatMap { it.keys }
+      .distinct()
+      .sorted()
+
+   val collisions = rawKeys.groupBy(::sanitizeResourcePropertyName)
+   val resolvedNames = rawKeys.associateWith { rawKey ->
+      val sanitized = sanitizeResourcePropertyName(rawKey)
+      val group = collisions[sanitized].orEmpty()
+      if (group.size == 1) sanitized else "${sanitized}__${stableHashSuffix(rawKey)}"
+   }
+
+   val builder = StringBuilder()
+   builder.appendLine("package $packageName")
+   builder.appendLine()
+   builder.appendLine("import io.mvdm.translationtools.client.TranslationStringResource")
+   builder.appendLine()
+   builder.appendLine("public object $objectName {")
+   builder.appendLine("   public object string {")
+
+   rawKeys.forEachIndexed { index, rawKey ->
+      val fallback = defaultLocaleEntries[rawKey]
+      builder.appendLine("      public val ${resolvedNames.getValue(rawKey)}: TranslationStringResource =")
+      builder.appendLine("         TranslationStringResource(")
+      builder.appendLine("            key = ${rawKey.asKotlinStringLiteral()},")
+      builder.appendLine("            fallback = ${fallback.asKotlinStringLiteral()},")
+      builder.appendLine("         )")
+      if (index != rawKeys.lastIndex)
+         builder.appendLine()
+   }
+
+   builder.appendLine("   }")
+   builder.appendLine("}")
+   return builder.toString()
+}
+
+private fun stableHashSuffix(rawKey: String): String
+{
+   val digest = MessageDigest.getInstance("SHA-256").digest(rawKey.toByteArray(Charsets.UTF_8))
+   return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }.take(8)
+}
+
+private fun String?.asKotlinStringLiteral(): String
+{
+   if (this == null)
+      return "null"
+
+   return buildString {
+      append('"')
+      this@asKotlinStringLiteral.forEach { character ->
+         when (character) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            else -> append(character)
+         }
+      }
+      append('"')
+   }
+}

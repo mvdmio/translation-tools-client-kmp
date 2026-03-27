@@ -2,16 +2,17 @@
 
 ## Status
 
-Implementation-ready for v1.
+Implemented for the first shipped slice.
 
-This slice ships:
+This now ships:
 
 - typed string resources in the runtime
 - generated `Res.string.*` accessors
 - explicit Gradle pull workflow
 - offline builds from a checked-in snapshot
+- separate Compose integration in `translationtools-client-compose`
 
-Everything else stays deferred until this slice lands.
+Deferred items remain deferred.
 
 ## Goals
 
@@ -40,7 +41,6 @@ val title = client.getCached(
 - formatting args
 - plurals
 - push workflows
-- Compose module
 - published standalone Gradle plugin
 - operator helpers like `client[Res.string.home_title]`
 
@@ -116,7 +116,7 @@ Explicitly not in scope for these overloads:
 
 - existing `String` overloads stay as-is
 - current consumers do not need to change
-- when implementation lands, bump the runtime artifact from `0.1.1` to `0.2.0`
+- implementation bumped the published version to `0.3.0`
 
 ## Generated API
 
@@ -350,7 +350,7 @@ Default config file:
 V1 schema:
 
 ```yaml
-baseUrl: https://translations.mvdm.io
+apiKey: your-project-api-key
 locales:
   - nl
 snapshotFile: translationtools/snapshot.json
@@ -361,16 +361,14 @@ generated:
 
 Optional field:
 
-```yaml
-apiKey: your-project-api-key
-```
+- none; `apiKey` is required in the checked-in config shape
 
 Config rules:
 
 - `generated.packageName` is required
 - `generated.objectName` defaults to `Res`
 - `locales` defaults to an empty list, which means pull only the remote default locale
-- `baseUrl` defaults to `https://translations.mvdm.io`
+- base URL is fixed to `https://translations.mvdm.io`
 - no source-set or output-dir knobs in v1; generation always targets `commonMain`
 
 Supported overrides:
@@ -447,7 +445,28 @@ Done when:
 - `./gradlew.bat pullTranslations` refreshes snapshot and generated code
 - `./gradlew.bat build` succeeds with no network after snapshot exists
 
-### Slice 4. Docs and release pass
+### Slice 4. Compose module
+
+Files:
+
+- `settings.gradle.kts`
+- `translationtools-client-compose/build.gradle.kts`
+- `translationtools-client-compose/src/commonMain/kotlin/io/mvdm/translationtools/client/compose/TranslationToolsCompositionLocals.kt`
+- `translationtools-client-compose/src/commonMain/kotlin/io/mvdm/translationtools/client/compose/TranslationStringResources.kt`
+
+Deliver:
+
+- separate `translationtools-client-compose` artifact
+- `LocalTranslationToolsClient`
+- `LocalTranslationToolsLocale`
+- `stringResource(resource, locale)`
+
+Done when:
+
+- Compose code can read `TranslationStringResource` values from the shared runtime client
+- explicit locale wins over `LocalTranslationToolsLocale`
+
+### Slice 5. Docs and release pass
 
 Files:
 
@@ -456,8 +475,8 @@ Files:
 
 Deliver:
 
-- README usage for typed resources and sync workflow
-- version bump to `0.2.0`
+- README usage for typed resources, sync workflow, and Compose module
+- version bump to `0.3.0`
 
 ## Test plan
 
@@ -501,18 +520,18 @@ These stay out of v1 on purpose:
 - plural resource model
 - editable local source format for push workflows
 - published reusable Gradle plugin
-- Compose runtime module
 
 None of these block typed resources plus `Res.string.*`.
 
 ## Final target state
 
-After slices 1 through 3, a consumer project can:
+After slices 1 through 5, a consumer project can:
 
 1. run `./gradlew.bat pullTranslations`
 2. commit `translationtools/snapshot.json`
 3. build offline
 4. read strings through `Res.string.*`
-5. keep using the existing runtime client under the hood
+5. use `stringResource(...)` from `translationtools-client-compose`
+6. keep using the existing runtime client under the hood
 
-That is enough to start implementation. No blocking design questions remain for this first slice.
+That first slice is now in place. Remaining work is follow-up scope, not a blocker for use.

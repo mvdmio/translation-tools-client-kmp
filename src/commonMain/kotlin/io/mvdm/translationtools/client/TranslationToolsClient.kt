@@ -59,6 +59,11 @@ public class TranslationToolsClient(
       return translationsFlow.value[resolvedLocale]?.get(validatedKey)?.value
    }
 
+   public fun getCached(resource: TranslationStringResource, locale: String? = null): String
+   {
+      return getCached(resource.key, locale) ?: resource.fallback ?: resource.key
+   }
+
    public suspend fun get(key: String, locale: String? = null, defaultValue: String? = null): String
    {
       val validatedKey = validateKey(key)
@@ -73,6 +78,11 @@ public class TranslationToolsClient(
       return fetched.value ?: defaultValue ?: validatedKey
    }
 
+   public suspend fun get(resource: TranslationStringResource, locale: String? = null): String
+   {
+      return get(resource.key, locale, resource.fallback)
+   }
+
    public fun observe(key: String, locale: String? = null): Flow<String?>
    {
       val validatedKey = validateKey(key)
@@ -80,6 +90,13 @@ public class TranslationToolsClient(
          val resolvedLocale = resolveLocale(locale)
          it[resolvedLocale]?.get(validatedKey)?.value
       }.distinctUntilChanged()
+   }
+
+   public fun observe(resource: TranslationStringResource, locale: String? = null): Flow<String>
+   {
+      return observe(resource.key, locale)
+         .map { it ?: resource.fallback ?: resource.key }
+         .distinctUntilChanged()
    }
 
    public fun observeRefreshState(): Flow<TranslationRefreshState>
