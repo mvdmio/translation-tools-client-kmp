@@ -54,4 +54,30 @@ class TranslationToolsConfigTests
 
       assertEquals("property-key", resolved.config.apiKey)
    }
+
+   @Test
+   fun resolveConfig_should_read_android_resource_import_settings()
+   {
+      val projectDir = createTempDirectory("translationtools-config").toFile()
+      File(projectDir, "translationtools.yaml").writeText(
+         """
+         apiKey: yaml-key
+         generated:
+           packageName: com.example.translations
+         androidResources:
+           resourceDirectories:
+             - app/src/main/res
+             - src/androidMain/res
+           keyOverrides:
+             action_save: action.save
+         """.trimIndent()
+      )
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val extension = project.extensions.create("translationTools", TranslationToolsExtension::class.java)
+
+      val resolved = resolveConfig(project, extension)
+
+      assertEquals(listOf("app/src/main/res", "src/androidMain/res"), resolved.config.androidResources.resourceDirectories)
+      assertEquals(mapOf("action_save" to "action.save"), resolved.config.androidResources.keyOverrides)
+   }
 }

@@ -38,7 +38,21 @@ class TranslationToolsPlugin : Plugin<Project>
          task.apiKey.set(resolved.config.apiKey)
          task.configuredLocales.set(resolved.config.locales)
          task.snapshotFile.set(project.layout.projectDirectory.file(resolved.config.snapshotFile))
-         task.finalizedBy(generateTask)
+          task.finalizedBy(generateTask)
+      }
+
+      project.tasks.register("importAndroidResources", ImportAndroidResourcesTask::class.java) { task ->
+         task.group = "translationtools"
+         task.description = "Imports Android string.xml resources into TranslationTools."
+
+         val resolved = resolveConfig(project, extension)
+         val resourceDirectories = resolved.config.androidResources.resourceDirectories
+         if (resourceDirectories.isNotEmpty()) {
+            task.primaryResourceDirectory.set(project.layout.projectDirectory.dir(resourceDirectories.first()))
+            task.additionalResourceDirectories.set(resourceDirectories.drop(1))
+         }
+         task.apiKey.set(resolved.config.apiKey)
+         task.keyOverrides.set(resolved.config.androidResources.keyOverrides)
       }
 
       project.plugins.withId("org.jetbrains.kotlin.multiplatform") {

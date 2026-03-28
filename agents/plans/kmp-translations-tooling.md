@@ -27,7 +27,6 @@
 - Read localized variants like `values-nl/strings.xml`.
 - Map Android string resource names to TranslationTools keys.
 - Import strings into TranslationTools.
-- Provide dry-run/report mode before upload.
 
 ### 2. Pull TranslationTools data into project metadata
 
@@ -37,26 +36,25 @@
 
 ### 3. Generate typed accessors
 
-- Generate Kotlin source similar to .NET generated localizations.
-- Generate:
-  - `Localizations`
-  - `Localizations.Keys`
-- Generated accessors call cache-only KMP client APIs.
+- Generate Kotlin source into `Res.string.*` typed resources.
+- Generated resources are consumed through the KMP runtime client APIs.
 - Safe after client `initialize()`.
 
 ## Proposed plugin shape
 
 - artifact: `translationtools-gradle-plugin`
-- Gradle extension for:
+- current task names:
+  - `importAndroidResources`
+  - `pullTranslations`
+  - `generateTranslationResources`
+- config file: `translationtools.yaml`
+- config sections:
   - API key
-  - project/package namespace
-  - output directory
-  - key naming mode
-  - locale mapping
-- initial tasks:
-  - `translationsImportAndroidResources`
-  - `translationsPullKmpManifest`
-  - `translationsGenerateKotlin`
+  - locales
+  - snapshot file
+  - generated package/object name
+  - Android resource directories
+  - Android resource key overrides
 
 ## Key decisions to settle
 
@@ -68,9 +66,9 @@
 ### 2. Key naming strategy
 
 - Need deterministic mapping from Android names like `action_save`.
-- Recommended default:
+- Fixed default:
   - `action_save` -> `action.save`
-- Must support explicit overrides for collisions/legacy naming.
+- Support explicit overrides for collisions/legacy naming.
 
 ### 3. Generation input
 
@@ -79,25 +77,27 @@
 
 ### 4. Generated API shape
 
-- Recommended generated shape:
+- Fixed generated shape:
 
 ```kotlin
-object Localizations {
-    object Keys {
-        const val ActionSave = "action.save"
+object Res {
+    object string {
+        val action_save = TranslationStringResource(
+            key = "action.save",
+            fallback = "Save",
+        )
     }
-
-    fun actionSave(): String = Translate.get("action.save", defaultValue = "Save")
 }
 ```
 
-- Keep accessors cache-only.
-- Fallback order should match KMP runtime policy.
+- Keep generation aligned with existing `TranslationStringResource` runtime APIs.
+- Fallback order matches KMP runtime policy.
 
 ## Import behavior
 
 - Parse default locale + localized resource files.
 - Preserve string value text.
+- Current API constraint: project push only accepts default-locale values.
 - Decide handling for:
   - formatted strings
   - escaped characters
@@ -105,8 +105,11 @@ object Localizations {
   - string arrays
   - translatable=`false`
 - Recommended v1:
-  - support normal strings first
-  - skip/report plurals and arrays until explicitly designed
+- support normal strings first
+- skip plurals and arrays until explicitly designed
+- skip `translatable="false"` entries
+- ignore non-locale qualifiers like `values-night`
+- parse localized files now; upload them once the API supports locale writes
 
 ## Generation behavior
 
@@ -137,7 +140,6 @@ object Localizations {
 - parse `values/strings.xml`
 - parse localized directories
 - key mapping rules
-- dry-run output
 - import payload correctness
 
 ### Generation tests
@@ -161,13 +163,13 @@ object Localizations {
 
 ### Work
 
-- settle key mapping strategy
-- settle manifest format
-- settle generated API shape
+- key mapping fixed to underscore-to-dot by default
+- snapshot file remains the generation input after import
+- generated API shape fixed to `Res.string.*`
 
 ### Acceptance
 
-- import and generation behavior fixed before implementation
+- import and generation behavior documented and aligned with shipped plugin tasks
 
 ## Phase 1 - Gradle plugin skeleton
 
@@ -187,7 +189,6 @@ object Localizations {
 
 - parse `string.xml` files
 - map resource names to TranslationTools keys
-- add dry-run/report mode
 - add import execution
 
 ### Acceptance

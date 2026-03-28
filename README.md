@@ -7,7 +7,7 @@ Kotlin Multiplatform TranslationTools runtime client.
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.3.1/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.4.0/
 ```
 
 Repository:
@@ -22,7 +22,7 @@ Dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.3.1")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.4.0")
 }
 ```
 
@@ -30,7 +30,7 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.3.1" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.4.0" }
 ```
 
 ```kotlin
@@ -209,7 +209,7 @@ Additional artifact:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:0.3.1")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:0.4.0")
 }
 ```
 
@@ -283,7 +283,7 @@ Compose behavior:
 - explicit locale wins over `LocalTranslationToolsLocale`
 - if neither is set, locale resolution falls back to the client runtime rules
 
-## Pull and code generation
+## Import, pull, and code generation
 
 Add `translationtools.yaml` at the repo root:
 
@@ -295,6 +295,11 @@ snapshotFile: translationtools/snapshot.json
 generated:
   packageName: io.mvdm.translationtools.client.resources
   objectName: Res
+androidResources:
+  resourceDirectories:
+    - src/androidMain/res
+  keyOverrides:
+    action_save: action.save
 ```
 
 Optional API key sources, highest priority first:
@@ -307,6 +312,12 @@ Notes:
 
 - base URL is fixed to `https://translations.mvdm.io`
 - `translationtools.yaml` should include an `apiKey` entry, even if you override it locally
+
+Android import command:
+
+```bash
+./gradlew.bat importAndroidResources
+```
 
 Sync command:
 
@@ -322,6 +333,8 @@ Generation command:
 
 Workflow:
 
+- `importAndroidResources` pushes the default-locale Android string set as the authoritative project key set
+- localized Android resource folders are parsed now, but the current server push API only accepts default-locale values
 - commit `translationtools/snapshot.json`
 - do not commit `build/generated/...`
 - normal `build` and `test` regenerate Kotlin from the local snapshot only

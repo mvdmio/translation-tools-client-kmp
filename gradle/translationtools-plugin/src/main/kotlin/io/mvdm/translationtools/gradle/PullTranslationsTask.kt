@@ -171,7 +171,7 @@ internal fun createDefaultPullHttpClient(): HttpClient
 
 internal class PullTranslationsException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-private const val BASE_URL = "https://translations.mvdm.io"
+internal const val BASE_URL = "https://translations.mvdm.io"
 private val pullJson = Json { ignoreUnknownKeys = true }
 
 @Serializable

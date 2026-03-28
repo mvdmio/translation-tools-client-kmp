@@ -12,11 +12,17 @@ data class TranslationToolsConfig(
    val locales: List<String>,
    val snapshotFile: String,
    val generated: GeneratedConfig,
+   val androidResources: AndroidResourcesConfig,
 )
 
 data class GeneratedConfig(
    val packageName: String,
    val objectName: String,
+)
+
+data class AndroidResourcesConfig(
+   val resourceDirectories: List<String>,
+   val keyOverrides: Map<String, String>,
 )
 
 internal fun resolveConfig(project: Project, extension: TranslationToolsExtension): ResolvedTranslationToolsConfig
@@ -64,11 +70,23 @@ private fun parseConfig(file: File): TranslationToolsConfig
    val packageName = generated["packageName"] as? String
       ?: throw org.gradle.api.GradleException("Missing generated.packageName in ${file.path}")
    val objectName = generated["objectName"] as? String ?: "Res"
+   val androidResources = loaded["androidResources"] as? Map<*, *>
+   val resourceDirectories = (androidResources?.get("resourceDirectories") as? List<*>)
+      ?.map { it.toString() }
+      ?: listOf("src/androidMain/res")
+   val keyOverrides = (androidResources?.get("keyOverrides") as? Map<*, *>)
+      ?.entries
+      ?.associate { (key, value) -> key.toString() to value.toString() }
+      ?: emptyMap()
 
    return TranslationToolsConfig(
       apiKey = apiKey,
       locales = locales,
       snapshotFile = snapshotFile,
       generated = GeneratedConfig(packageName = packageName, objectName = objectName),
+      androidResources = AndroidResourcesConfig(
+         resourceDirectories = resourceDirectories,
+         keyOverrides = keyOverrides,
+      ),
    )
 }
