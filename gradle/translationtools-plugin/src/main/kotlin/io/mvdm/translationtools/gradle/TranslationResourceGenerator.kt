@@ -82,7 +82,7 @@ private fun stableHashSuffix(rawKey: String): String
    return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }.take(8)
 }
 
-private fun String?.asKotlinStringLiteral(): String
+internal fun String?.asKotlinStringLiteral(): String
 {
    if (this == null)
       return "null"

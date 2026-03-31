@@ -2,7 +2,6 @@ package io.mvdm.translationtools.gradle
 
 import org.gradle.api.Project
 import org.gradle.api.file.RegularFile
-import org.gradle.api.provider.Provider
 import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
 import java.io.File
@@ -11,7 +10,6 @@ data class TranslationToolsConfig(
    val apiKey: String?,
    val defaultLocale: String?,
    val locales: List<String>,
-   val snapshotFile: String,
    val generated: GeneratedConfig,
    val androidResources: AndroidResourcesConfig,
 )
@@ -26,11 +24,14 @@ data class AndroidResourcesConfig(
    val keyOverrides: Map<String, String>,
 )
 
-internal fun resolveConfig(project: Project, extension: TranslationToolsExtension): ResolvedTranslationToolsConfig
+internal fun resolveConfig(project: Project): ResolvedTranslationToolsConfig
 {
-   val configFile = resolveConfigFile(project, extension).get().asFile
+   val configFile = resolveConfigFile(project).asFile
    if (!configFile.exists())
       throw org.gradle.api.GradleException("TranslationTools config file not found: ${configFile.path}. Run ./gradlew.bat initTranslationTools first.")
+
+   if (configFile.parentFile.canonicalFile != project.projectDir.canonicalFile)
+      throw org.gradle.api.GradleException("translationtools.yaml must be placed in the project root: ${project.projectDir.path}")
 
    val parsed = parseConfig(configFile)
    val apiKey = (project.findProperty("translationtools.apiKey") as String?)
@@ -48,17 +49,9 @@ internal data class ResolvedTranslationToolsConfig(
    val config: TranslationToolsConfig,
 )
 
-internal fun resolveConfigFile(project: Project, extension: TranslationToolsExtension): Provider<RegularFile>
+internal fun resolveConfigFile(project: Project): RegularFile
 {
-   val configuredPath = project.findProperty("translationtools.config") as String?
-   return if (configuredPath != null) {
-      project.provider {
-         project.layout.projectDirectory.file(configuredPath)
-      }
-   }
-   else {
-      extension.configFile.orElse(project.layout.projectDirectory.file("translationtools.yaml"))
-   }
+   return project.layout.projectDirectory.file(DEFAULT_CONFIG_FILE)
 }
 
 private fun parseConfig(file: File): TranslationToolsConfig
@@ -70,7 +63,9 @@ private fun parseConfig(file: File): TranslationToolsConfig
    val apiKey = loaded["apiKey"] as? String
    val defaultLocale = loaded["defaultLocale"] as? String
    val locales = (loaded["locales"] as? List<*>)?.map { it.toString() } ?: emptyList()
-   val snapshotFile = loaded["snapshotFile"] as? String ?: "translationtools/snapshot.json"
+   if (loaded.containsKey("snapshotFile"))
+      throw org.gradle.api.GradleException("snapshotFile is no longer supported. Use the default project-root snapshot.json path.")
+
    val generated = loaded["generated"] as? Map<*, *>
       ?: throw org.gradle.api.GradleException("Missing generated config in ${file.path}")
    val packageName = generated["packageName"] as? String
@@ -89,7 +84,6 @@ private fun parseConfig(file: File): TranslationToolsConfig
       apiKey = apiKey,
       defaultLocale = defaultLocale,
       locales = locales,
-      snapshotFile = snapshotFile,
       generated = GeneratedConfig(packageName = packageName, objectName = objectName),
       androidResources = AndroidResourcesConfig(
          resourceDirectories = resourceDirectories,
@@ -100,15 +94,14 @@ private fun parseConfig(file: File): TranslationToolsConfig
 
 internal fun renderDefaultConfig(): String
 {
-   return """
-          apiKey: your-project-api-key
-          defaultLocale: en
-          locales:
-            - en
-          snapshotFile: translationtools/snapshot.json
-          generated:
-            packageName: com.example.translations
-            objectName: Res
+    return """
+           apiKey: your-project-api-key
+           defaultLocale: en
+           locales:
+             - en
+           generated:
+             packageName: com.example.translations
+             objectName: Res
           androidResources:
             resourceDirectories:
               - src/androidMain/res

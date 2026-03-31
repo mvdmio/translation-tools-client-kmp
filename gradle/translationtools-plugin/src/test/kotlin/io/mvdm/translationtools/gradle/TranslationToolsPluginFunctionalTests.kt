@@ -15,22 +15,20 @@ class TranslationToolsPluginFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
-      File(projectDir, "translationtools.yaml").writeText(
-           """
-           apiKey: test-key
-           defaultLocale: en
-           locales:
-             - en
-           snapshotFile: translationtools/snapshot.json
-           generated:
-             packageName: com.example.translations
-             objectName: Res
-          """.trimIndent()
-      )
-      File(projectDir, "translationtools").mkdirs()
-      File(projectDir, "translationtools/snapshot.json").writeText(
-         """
-         {
+       File(projectDir, "translationtools.yaml").writeText(
+            """
+            apiKey: test-key
+            defaultLocale: en
+            locales:
+              - en
+            generated:
+              packageName: com.example.translations
+              objectName: Res
+           """.trimIndent()
+       )
+       File(projectDir, "snapshot.json").writeText(
+          """
+          {
            "schemaVersion": 1,
            "project": {
              "defaultLocale": "en",
@@ -51,10 +49,12 @@ class TranslationToolsPluginFunctionalTests
          .withArguments("generateTranslationResources")
          .build()
 
-      assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
-      val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt")
-      assertTrue(generated.exists())
-      assertTrue(generated.readText().contains("val home_title"))
+       assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
+       val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt")
+       val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/ResBundledSnapshot.kt")
+       assertTrue(generated.exists())
+       assertTrue(bundled.exists())
+       assertTrue(generated.readText().contains("val home_title"))
    }
 
    @Test
@@ -88,22 +88,20 @@ class TranslationToolsPluginFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
-      File(projectDir, "translationtools.yaml").writeText(
-           """
-           apiKey: test-key
-           defaultLocale: en
-           locales:
-             - en
-           snapshotFile: translationtools/snapshot.json
-           generated:
-             packageName: com.example.translations
-             objectName: Res
-          """.trimIndent()
-      )
-      File(projectDir, "translationtools").mkdirs()
-      File(projectDir, "translationtools/snapshot.json").writeText(
-         """
-         {
+       File(projectDir, "translationtools.yaml").writeText(
+            """
+            apiKey: test-key
+            defaultLocale: en
+            locales:
+              - en
+            generated:
+              packageName: com.example.translations
+              objectName: Res
+           """.trimIndent()
+       )
+       File(projectDir, "snapshot.json").writeText(
+          """
+          {
            "schemaVersion": 1,
            "project": {
              "defaultLocale": "en",
@@ -192,9 +190,6 @@ private fun writeBuildFiles(projectDir: File)
          jvm()
       }
 
-      translationTools {
-         configFile.set(layout.projectDirectory.file("translationtools.yaml"))
-      }
       """.trimIndent()
-   )
+    )
 }

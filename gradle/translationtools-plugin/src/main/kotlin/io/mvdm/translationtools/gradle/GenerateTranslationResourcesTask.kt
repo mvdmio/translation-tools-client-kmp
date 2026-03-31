@@ -24,6 +24,9 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
    @get:OutputFile
    abstract val outputFile: RegularFileProperty
 
+   @get:OutputFile
+   abstract val bundledSnapshotOutputFile: RegularFileProperty
+
    @TaskAction
    fun generate()
    {
@@ -38,5 +41,11 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
       output.parentFile.mkdirs()
       if (!output.exists() || output.readText() != rendered)
          output.writeText(rendered)
+
+      val bundledSnapshot = renderBundledSnapshot(parsed, packageName.get(), objectName.get())
+      val bundledSnapshotOutput = bundledSnapshotOutputFile.asFile.get()
+      bundledSnapshotOutput.parentFile.mkdirs()
+      if (!bundledSnapshotOutput.exists() || bundledSnapshotOutput.readText() != bundledSnapshot)
+         bundledSnapshotOutput.writeText(bundledSnapshot)
    }
 }

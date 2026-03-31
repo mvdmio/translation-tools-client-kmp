@@ -1,10 +1,15 @@
 package io.mvdm.translationtools.client
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
@@ -25,6 +30,7 @@ public class TranslationToolsClient(
    private val projectMetadataFlow = MutableStateFlow<ProjectMetadata?>(null)
    private val translationsFlow = MutableStateFlow<Map<String, Map<String, TranslationItem>>>(emptyMap())
    private val refreshStateFlow = MutableStateFlow(TranslationRefreshState())
+   private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
    private var lastSuccessfulRefreshAt: Instant? = null
 
    public suspend fun initialize()
@@ -37,18 +43,37 @@ public class TranslationToolsClient(
          restored = true
       }
 
-      try {
-         refresh(force = true)
+      if (!restored) {
+         options.bundledSnapshot?.let {
+            restore(it)
+            restored = true
+         }
       }
-      catch (exception: Throwable) {
-         refreshStateFlow.value = TranslationRefreshState(
-            status = TranslationRefreshStatus.Failed,
-            lastSuccessfulRefreshAt = lastSuccessfulRefreshAt,
-            lastFailureMessage = exception.message,
-         )
 
-         if (!restored)
+      if (!restored) {
+         try {
+            refresh(force = true)
+         }
+         catch (exception: Throwable) {
+            refreshStateFlow.value = TranslationRefreshState(
+               status = TranslationRefreshStatus.Failed,
+               lastSuccessfulRefreshAt = lastSuccessfulRefreshAt,
+               lastFailureMessage = exception.message,
+            )
             throw exception
+         }
+         return
+      }
+
+      if (!options.backgroundRefreshEnabled)
+         return
+
+      backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+          try {
+             refresh(force = true)
+          }
+         catch (_: Throwable) {
+         }
       }
    }
 

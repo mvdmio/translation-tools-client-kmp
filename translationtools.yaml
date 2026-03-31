@@ -1,7 +1,6 @@
 apiKey: your-project-api-key
 locales:
   - en
-snapshotFile: translationtools/snapshot.json
 generated:
   packageName: io.mvdm.translationtools.client.resources
   objectName: Res

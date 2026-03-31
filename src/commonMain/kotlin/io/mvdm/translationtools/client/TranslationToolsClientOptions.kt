@@ -7,8 +7,10 @@ public data class TranslationToolsClientOptions(
    val apiKey: String,
    val preferredLocales: Set<String> = emptySet(),
    val refreshInterval: Duration = 1.hours,
+   val backgroundRefreshEnabled: Boolean = true,
    val currentLocaleProvider: () -> String? = { null },
    val snapshotStore: TranslationSnapshotStore = NoOpTranslationSnapshotStore,
+   val bundledSnapshot: StoredTranslations? = null,
 )
 {
    init {

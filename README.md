@@ -7,7 +7,7 @@ Kotlin Multiplatform TranslationTools runtime client.
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.4.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.6.0/
 ```
 
 Repository:
@@ -22,7 +22,7 @@ Dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.4.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.6.0")
 }
 ```
 
@@ -30,7 +30,7 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.4.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.6.0" }
 ```
 
 ```kotlin
@@ -42,22 +42,26 @@ dependencies {
 ## What it does
 
 - bootstrap translations from `https://translations.mvdm.io`
+- bootstrap first launch from bundled `snapshot.json`
 - keep reads local after bootstrap
 - persist snapshots locally for next app launch
-- refresh on startup and app foreground only
+- refresh in background after successful startup restore by default
 
 Runtime model:
 
 1. create `TranslationToolsClient`
 2. call `initialize()` during startup
 3. restore persisted snapshots when configured
-4. refresh project metadata + selected locale snapshots
+4. otherwise restore bundled snapshot when provided
+5. if nothing restored, do blocking refresh
+6. if restored, do background refresh by default
 5. read translations from in-memory cache
 6. call `refreshIfStale()` when returning to foreground
 
 Default refresh behavior:
 
-- refresh on `initialize()`
+- blocking refresh on `initialize()` only when no persisted or bundled snapshot exists
+- background refresh after successful persisted/bundled restore by default
 - refresh on foreground only when older than 1 hour
 - no background timer
 - no WebSocket/live sync
@@ -88,6 +92,7 @@ val client = TranslationTools.createClient(
         apiKey = "your-project-api-key",
         currentLocaleProvider = { "en" },
         snapshotStore = JvmTranslationSnapshotStores.default(),
+        bundledSnapshot = ResBundledSnapshot.value,
     ),
 )
 ```
@@ -98,6 +103,7 @@ You provide:
 - Ktor `HttpClient`
 - optional persisted snapshot store
 - optional current locale provider
+- optional bundled startup snapshot
 
 ## Startup and refresh
 
@@ -118,6 +124,7 @@ Guidance:
 - prefer one shared client instance per app/runtime
 - initialize before first real UI read if possible
 - do not call `refresh()` on every screen
+- set `backgroundRefreshEnabled = false` to opt out of startup background refresh
 
 ## Persisted cache
 
@@ -209,7 +216,7 @@ Additional artifact:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:0.4.0")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:0.6.0")
 }
 ```
 
@@ -291,7 +298,6 @@ Add `translationtools.yaml` at the repo root:
 apiKey: your-project-api-key
 locales:
   - en
-snapshotFile: translationtools/snapshot.json
 generated:
   packageName: io.mvdm.translationtools.client.resources
   objectName: Res
@@ -340,12 +346,18 @@ Generation command:
 Workflow:
 
 - `initTranslationTools` creates a starter `translationtools.yaml`
-- `migrateTranslations` requires `translationtools.yaml`, imports full Android locale/value state, refreshes `translationtools/snapshot.json`, and regenerates Kotlin resources
-- commit `translationtools/snapshot.json`
+- `pullTranslations` refreshes root `snapshot.json` and regenerates Kotlin resources
+- `migrateTranslations` requires `translationtools.yaml`, imports full Android locale/value state, refreshes root `snapshot.json`, and regenerates Kotlin resources
+- commit `snapshot.json`
 - do not commit `build/generated/...`
 - normal `build` and `test` regenerate Kotlin from the local snapshot only
 - generated-source consumers like Android sources jars depend on `generateTranslationResources`
 - if the snapshot is missing, generation fails and tells you to run `pullTranslations` or `migrateTranslations`
+
+Generated output includes:
+
+- `Res.kt` for typed translation keys/fallbacks
+- `ResBundledSnapshot.kt` for first-launch bundled bootstrap data
 
 ## Locale selection
 

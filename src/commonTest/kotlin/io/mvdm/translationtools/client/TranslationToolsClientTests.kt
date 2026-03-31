@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TranslationToolsClientTests
 {
@@ -139,6 +140,50 @@ class TranslationToolsClientTests
    }
 
    @Test
+   fun initialize_should_restore_bundled_snapshot_before_network_when_persisted_store_empty() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Fresh"))),
+      )
+      val client = createClient(
+         api = api,
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem("home.title", "Bundled")))),
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+         ),
+         backgroundRefreshEnabled = false,
+      )
+
+      client.initialize()
+
+      assertEquals("Bundled", client.getCached("home.title", "en"))
+      assertEquals(0, api.projectRequests)
+   }
+
+   @Test
+   fun initialize_should_skip_background_refresh_when_disabled() = runTest {
+      val store = FakeTranslationSnapshotStore(
+         stored = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem("home.title", "Cached")))),
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+         )
+      )
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Fresh"))),
+      )
+      val client = createClient(api, store = store, backgroundRefreshEnabled = false)
+
+      client.initialize()
+
+      assertEquals("Cached", client.getCached("home.title", "en"))
+      assertEquals(0, api.projectRequests)
+      assertTrue(store.saved.isEmpty())
+   }
+
+   @Test
    fun refreshIfStale_should_skip_inside_throttle_window() = runTest {
       val clock = MutableClock(Instant.parse("2026-03-25T10:00:00Z"))
       val api = FakeTranslationToolsApi(
@@ -205,14 +250,18 @@ class TranslationToolsClientTests
       api: FakeTranslationToolsApi,
       currentLocale: String? = "en",
       store: TranslationSnapshotStore = NoOpTranslationSnapshotStore,
+      bundledSnapshot: StoredTranslations? = null,
+      backgroundRefreshEnabled: Boolean = true,
       now: () -> Instant = { Instant.parse("2026-03-25T10:00:00Z") },
    ): TranslationToolsClient {
       return TranslationToolsClient(
          api = api,
          options = TranslationToolsClientOptions(
             apiKey = "test-api-key",
+            backgroundRefreshEnabled = backgroundRefreshEnabled,
             currentLocaleProvider = { currentLocale },
             snapshotStore = store,
+            bundledSnapshot = bundledSnapshot,
          ),
          now = now,
       )

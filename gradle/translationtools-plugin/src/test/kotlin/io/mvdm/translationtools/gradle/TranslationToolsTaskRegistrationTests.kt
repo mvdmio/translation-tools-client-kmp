@@ -65,9 +65,6 @@ private fun writeFunctionalBuildFiles(projectDir: File)
          jvm()
       }
 
-      translationTools {
-         configFile.set(layout.projectDirectory.file("translationtools.yaml"))
-      }
       """.trimIndent(),
-   )
+    )
 }

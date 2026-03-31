@@ -10,7 +10,7 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "0.5.0"
+version = "0.6.0"
 
 kotlin {
    androidTarget {
@@ -119,6 +119,3 @@ mavenPublishing {
    }
 }
 
-translationTools {
-   configFile.set(layout.projectDirectory.file("translationtools.yaml"))
-}
