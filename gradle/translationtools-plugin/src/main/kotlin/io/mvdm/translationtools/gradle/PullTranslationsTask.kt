@@ -60,9 +60,7 @@ abstract class PullTranslationsTask : DefaultTask()
 
       val output = snapshotFile.asFile.get()
       output.parentFile.mkdirs()
-      val rendered = Json { prettyPrint = true }.encodeToString(TranslationSnapshotFile.serializer(), snapshot)
-      if (!output.exists() || normalizeJson(output.readText()) != normalizeJson(rendered))
-         output.writeText(rendered + System.lineSeparator())
+      writeSnapshotFile(output, snapshot)
 
       logger.lifecycle("Loaded config from translationtools.yaml")
       logger.lifecycle("Pulled locales: ${snapshot.project.locales.joinToString(", ")}")
@@ -77,7 +75,11 @@ internal suspend fun pullSnapshot(
 ): TranslationSnapshotFile
 {
    val metadata = fetchProjectMetadata(client, apiKey)
-   val locales = (listOf(metadata.defaultLocale) + configuredLocales).distinct().sorted()
+   val locales = (listOfNotNull(metadata.defaultLocale) + configuredLocales + metadata.locales).distinct().sorted()
+   if (locales.isEmpty())
+      throw PullTranslationsException("TranslationTools project has no locales configured.")
+
+   val defaultLocale = metadata.defaultLocale ?: locales.first()
    val translations = locales.associateWith { locale ->
       fetchLocaleTranslations(client, apiKey, locale)
          .associate { it.key to it.value }
@@ -87,14 +89,14 @@ internal suspend fun pullSnapshot(
    return TranslationSnapshotFile(
       schemaVersion = 1,
       project = SnapshotProject(
-         defaultLocale = metadata.defaultLocale,
+         defaultLocale = defaultLocale,
          locales = locales,
       ),
       translations = translations,
    )
 }
 
-private suspend fun fetchProjectMetadata(client: HttpClient, apiKey: String): ProjectMetadataResponse
+internal suspend fun fetchProjectMetadata(client: HttpClient, apiKey: String): ProjectMetadataResponse
 {
    return executePullRequest("project metadata") {
       val body = client.get("$BASE_URL/api/v1/translations/project") {
@@ -177,7 +179,7 @@ private val pullJson = Json { ignoreUnknownKeys = true }
 @Serializable
 internal data class ProjectMetadataResponse(
    val locales: List<String>,
-   val defaultLocale: String,
+   val defaultLocale: String?,
 )
 
 @Serializable
@@ -189,4 +191,12 @@ internal data class TranslationItemResponse(
 private fun normalizeJson(content: String): String
 {
    return content.replace("\r\n", "\n").trim()
+}
+
+internal fun writeSnapshotFile(output: java.io.File, snapshot: TranslationSnapshotFile)
+{
+   output.parentFile.mkdirs()
+   val rendered = Json { prettyPrint = true }.encodeToString(TranslationSnapshotFile.serializer(), snapshot)
+   if (!output.exists() || normalizeJson(output.readText()) != normalizeJson(rendered))
+      output.writeText(rendered + System.lineSeparator())
 }

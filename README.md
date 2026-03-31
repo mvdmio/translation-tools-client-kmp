@@ -313,10 +313,16 @@ Notes:
 - base URL is fixed to `https://translations.mvdm.io`
 - `translationtools.yaml` should include an `apiKey` entry, even if you override it locally
 
-Android import command:
+Init command:
 
 ```bash
-./gradlew.bat importAndroidResources
+./gradlew.bat initTranslationTools
+```
+
+Migrate command:
+
+```bash
+./gradlew.bat migrateTranslations
 ```
 
 Sync command:
@@ -333,13 +339,13 @@ Generation command:
 
 Workflow:
 
-- `importAndroidResources` pushes the default-locale Android string set as the authoritative project key set
-- localized Android resource folders are parsed now, but the current server push API only accepts default-locale values
+- `initTranslationTools` creates a starter `translationtools.yaml`
+- `migrateTranslations` requires `translationtools.yaml`, imports full Android locale/value state, refreshes `translationtools/snapshot.json`, and regenerates Kotlin resources
 - commit `translationtools/snapshot.json`
 - do not commit `build/generated/...`
 - normal `build` and `test` regenerate Kotlin from the local snapshot only
 - generated-source consumers like Android sources jars depend on `generateTranslationResources`
-- if the snapshot is missing, generation fails and tells you to run `pullTranslations`
+- if the snapshot is missing, generation fails and tells you to run `pullTranslations` or `migrateTranslations`
 
 ## Locale selection
 

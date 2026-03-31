@@ -10,49 +10,63 @@ class TranslationToolsPlugin : Plugin<Project>
    override fun apply(project: Project)
    {
       val extension = project.extensions.create("translationTools", TranslationToolsExtension::class.java)
+      val configFile = resolveConfigFile(project, extension)
+      val resolvedConfig = project.provider { resolveConfig(project, extension) }
+
+      project.tasks.register("initTranslationTools", InitTranslationToolsTask::class.java) { task ->
+         task.group = "translationtools"
+         task.description = "Creates a starter translationtools.yaml config file."
+         task.configFile.set(configFile)
+      }
 
       val generateTask = project.tasks.register("generateTranslationResources", GenerateTranslationResourcesTask::class.java) { task ->
          task.group = "translationtools"
          task.description = "Generates Kotlin translation resources from the local snapshot."
 
-         val resolved = resolveConfig(project, extension)
-         val snapshot = project.layout.projectDirectory.file(resolved.config.snapshotFile)
+         val snapshot = resolvedConfig.map { project.layout.projectDirectory.file(it.config.snapshotFile) }
          val outputDir = project.layout.buildDirectory.dir("generated/source/translationtools/commonMain/kotlin")
-         val packagePath = resolved.config.generated.packageName.replace('.', '/')
 
-          task.snapshotFile.set(snapshot)
-          task.packageName.set(resolved.config.generated.packageName)
-          task.objectName.set(resolved.config.generated.objectName)
-          task.outputFile.set(outputDir.map { it.file("$packagePath/${resolved.config.generated.objectName}.kt") })
-          task.outputs.upToDateWhen {
-             val output = task.outputFile.asFile.get()
-             output.exists() && snapshot.asFile.exists()
-          }
-      }
+         task.snapshotFile.set(snapshot)
+         task.packageName.set(resolvedConfig.map { it.config.generated.packageName })
+         task.objectName.set(resolvedConfig.map { it.config.generated.objectName })
+         task.outputFile.set(
+            outputDir.zip(resolvedConfig) { dir, resolved ->
+               dir.file("${resolved.config.generated.packageName.replace('.', '/')}/${resolved.config.generated.objectName}.kt")
+            }
+         )
+         task.outputs.upToDateWhen {
+            val output = task.outputFile.asFile.get()
+            output.exists() && task.snapshotFile.asFile.get().exists()
+         }
+       }
 
       project.tasks.register("pullTranslations", PullTranslationsTask::class.java) { task ->
          task.group = "translationtools"
          task.description = "Pulls translations and regenerates Kotlin resources."
 
-         val resolved = resolveConfig(project, extension)
-         task.apiKey.set(resolved.config.apiKey)
-         task.configuredLocales.set(resolved.config.locales)
-         task.snapshotFile.set(project.layout.projectDirectory.file(resolved.config.snapshotFile))
-          task.finalizedBy(generateTask)
+         task.apiKey.set(resolvedConfig.flatMap { resolved ->
+            project.provider { resolved.config.apiKey ?: "" }
+         })
+         task.configuredLocales.set(resolvedConfig.map { it.config.locales })
+         task.snapshotFile.set(resolvedConfig.map { project.layout.projectDirectory.file(it.config.snapshotFile) })
+         task.finalizedBy(generateTask)
       }
 
-      project.tasks.register("importAndroidResources", ImportAndroidResourcesTask::class.java) { task ->
+      project.tasks.register("migrateTranslations", MigrateTranslationsTask::class.java) { task ->
          task.group = "translationtools"
-         task.description = "Imports Android string.xml resources into TranslationTools."
+         task.description = "Imports Android string.xml resources into TranslationTools, refreshes snapshot, and regenerates Kotlin resources."
 
-         val resolved = resolveConfig(project, extension)
-         val resourceDirectories = resolved.config.androidResources.resourceDirectories
-         if (resourceDirectories.isNotEmpty()) {
-            task.primaryResourceDirectory.set(project.layout.projectDirectory.dir(resourceDirectories.first()))
-            task.additionalResourceDirectories.set(resourceDirectories.drop(1))
-         }
-         task.apiKey.set(resolved.config.apiKey)
-         task.keyOverrides.set(resolved.config.androidResources.keyOverrides)
+         task.apiKey.set(resolvedConfig.flatMap { resolved ->
+            project.provider { resolved.config.apiKey ?: "" }
+         })
+         task.defaultLocale.set(resolvedConfig.flatMap { resolved ->
+            project.provider { resolved.config.defaultLocale ?: "" }
+         })
+         task.resourceDirectories.set(resolvedConfig.map { it.config.androidResources.resourceDirectories })
+         task.configuredLocales.set(resolvedConfig.map { it.config.locales })
+         task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
+         task.snapshotFile.set(resolvedConfig.map { project.layout.projectDirectory.file(it.config.snapshotFile) })
+         task.finalizedBy(generateTask)
       }
 
       project.plugins.withId("org.jetbrains.kotlin.multiplatform") {

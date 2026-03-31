@@ -11,20 +11,21 @@ import kotlin.test.assertTrue
 class TranslationToolsPluginFunctionalTests
 {
    @Test
-   fun generateTranslationResources_should_generate_res_file_from_snapshot()
+    fun generateTranslationResources_should_generate_res_file_from_snapshot()
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
       File(projectDir, "translationtools.yaml").writeText(
-         """
-         apiKey: test-key
-         locales:
-           - en
-         snapshotFile: translationtools/snapshot.json
-         generated:
-           packageName: com.example.translations
-           objectName: Res
-         """.trimIndent()
+           """
+           apiKey: test-key
+           defaultLocale: en
+           locales:
+             - en
+           snapshotFile: translationtools/snapshot.json
+           generated:
+             packageName: com.example.translations
+             objectName: Res
+          """.trimIndent()
       )
       File(projectDir, "translationtools").mkdirs()
       File(projectDir, "translationtools/snapshot.json").writeText(
@@ -62,11 +63,12 @@ class TranslationToolsPluginFunctionalTests
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
       File(projectDir, "translationtools.yaml").writeText(
-         """
-         apiKey: test-key
-         generated:
-           packageName: com.example.translations
-         """.trimIndent()
+           """
+           apiKey: test-key
+           defaultLocale: en
+           generated:
+             packageName: com.example.translations
+           """.trimIndent()
       )
 
       val result = GradleRunner.create()
@@ -87,15 +89,16 @@ class TranslationToolsPluginFunctionalTests
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
       File(projectDir, "translationtools.yaml").writeText(
-         """
-         apiKey: test-key
-         locales:
-           - en
-         snapshotFile: translationtools/snapshot.json
-         generated:
-           packageName: com.example.translations
-           objectName: Res
-         """.trimIndent()
+           """
+           apiKey: test-key
+           defaultLocale: en
+           locales:
+             - en
+           snapshotFile: translationtools/snapshot.json
+           generated:
+             packageName: com.example.translations
+             objectName: Res
+          """.trimIndent()
       )
       File(projectDir, "translationtools").mkdirs()
       File(projectDir, "translationtools/snapshot.json").writeText(
@@ -109,10 +112,10 @@ class TranslationToolsPluginFunctionalTests
            "translations": {
              "en": {
                "home.title": "Home"
-             }
-           }
-         }
-         """.trimIndent()
+              }
+            }
+          }
+          """.trimIndent()
       )
 
       val result = GradleRunner.create()
@@ -123,6 +126,37 @@ class TranslationToolsPluginFunctionalTests
 
       assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
       assertEquals(TaskOutcome.SUCCESS, result.task(":jvmSourcesJar")?.outcome)
+   }
+
+   @Test
+   fun initTranslationTools_should_create_starter_config()
+   {
+      val projectDir = createTempDirectory("translationtools-functional").toFile()
+      writeBuildFiles(projectDir)
+
+      val result = GradleRunner.create()
+         .withProjectDir(projectDir)
+         .withPluginClasspath()
+         .withArguments("initTranslationTools")
+         .build()
+
+      assertEquals(TaskOutcome.SUCCESS, result.task(":initTranslationTools")?.outcome)
+      assertTrue(File(projectDir, "translationtools.yaml").exists())
+   }
+
+   @Test
+   fun migrateTranslations_should_fail_when_config_is_missing()
+   {
+      val projectDir = createTempDirectory("translationtools-functional").toFile()
+      writeBuildFiles(projectDir)
+
+      val result = GradleRunner.create()
+         .withProjectDir(projectDir)
+         .withPluginClasspath()
+         .withArguments("migrateTranslations")
+         .buildAndFail()
+
+      assertTrue(result.output.contains("initTranslationTools"))
    }
 }
 

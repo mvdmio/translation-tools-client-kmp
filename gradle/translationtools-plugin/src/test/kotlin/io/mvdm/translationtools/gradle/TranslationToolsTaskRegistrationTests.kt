@@ -6,19 +6,20 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-class ImportAndroidResourcesTaskRegistrationTests
+class TranslationToolsTaskRegistrationTests
 {
    @Test
-   fun tasks_should_include_importAndroidResources()
+   fun tasks_should_include_init_and_migrate_translationtools_tasks()
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeFunctionalBuildFiles(projectDir)
       File(projectDir, "translationtools.yaml").writeText(
          """
          apiKey: test-key
+         defaultLocale: en
          generated:
            packageName: com.example.translations
-         """.trimIndent()
+         """.trimIndent(),
       )
 
       val result = GradleRunner.create()
@@ -27,7 +28,8 @@ class ImportAndroidResourcesTaskRegistrationTests
          .withArguments("tasks", "--all")
          .build()
 
-      assertTrue(result.output.contains("importAndroidResources"))
+      assertTrue(result.output.contains("initTranslationTools"))
+      assertTrue(result.output.contains("migrateTranslations"))
    }
 }
 
@@ -49,7 +51,7 @@ private fun writeFunctionalBuildFiles(projectDir: File)
             mavenCentral()
          }
       }
-      """.trimIndent()
+      """.trimIndent(),
    )
 
    File(projectDir, "build.gradle.kts").writeText(
@@ -66,6 +68,6 @@ private fun writeFunctionalBuildFiles(projectDir: File)
       translationTools {
          configFile.set(layout.projectDirectory.file("translationtools.yaml"))
       }
-      """.trimIndent()
+      """.trimIndent(),
    )
 }

@@ -5,6 +5,7 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class TranslationToolsConfigTests
 {
@@ -13,15 +14,16 @@ class TranslationToolsConfigTests
    {
       val projectDir = createTempDirectory("translationtools-config").toFile()
       File(projectDir, "translationtools.yaml").writeText(
-         """
-         apiKey: yaml-key
-         locales:
-           - nl
-         snapshotFile: translationtools/snapshot.json
-         generated:
-           packageName: com.example.translations
-           objectName: Res
-         """.trimIndent()
+           """
+           apiKey: yaml-key
+           defaultLocale: en
+           locales:
+             - nl
+           snapshotFile: translationtools/snapshot.json
+           generated:
+             packageName: com.example.translations
+             objectName: Res
+          """.trimIndent()
       )
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
       val extension = project.extensions.create("translationTools", TranslationToolsExtension::class.java)
@@ -29,6 +31,7 @@ class TranslationToolsConfigTests
       val resolved = resolveConfig(project, extension)
 
       assertEquals("yaml-key", resolved.config.apiKey)
+      assertEquals("en", resolved.config.defaultLocale)
       assertEquals(listOf("nl"), resolved.config.locales)
       assertEquals("translationtools/snapshot.json", resolved.config.snapshotFile)
       assertEquals("com.example.translations", resolved.config.generated.packageName)
@@ -79,5 +82,15 @@ class TranslationToolsConfigTests
 
       assertEquals(listOf("app/src/main/res", "src/androidMain/res"), resolved.config.androidResources.resourceDirectories)
       assertEquals(mapOf("action_save" to "action.save"), resolved.config.androidResources.keyOverrides)
+   }
+
+   @Test
+   fun renderDefaultConfig_should_include_default_locale_and_android_resource_directory()
+   {
+      val rendered = renderDefaultConfig()
+
+      assertTrue(rendered.contains("defaultLocale: en"))
+      assertTrue(rendered.contains("resourceDirectories:"))
+      assertTrue(rendered.contains("src/androidMain/res"))
    }
 }

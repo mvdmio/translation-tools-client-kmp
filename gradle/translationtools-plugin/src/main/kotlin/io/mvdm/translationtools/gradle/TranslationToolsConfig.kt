@@ -9,6 +9,7 @@ import java.io.File
 
 data class TranslationToolsConfig(
    val apiKey: String?,
+   val defaultLocale: String?,
    val locales: List<String>,
    val snapshotFile: String,
    val generated: GeneratedConfig,
@@ -27,18 +28,9 @@ data class AndroidResourcesConfig(
 
 internal fun resolveConfig(project: Project, extension: TranslationToolsExtension): ResolvedTranslationToolsConfig
 {
-   val configuredPath = project.findProperty("translationtools.config") as String?
-   val configFileProvider: Provider<RegularFile> = if (configuredPath != null) {
-      project.provider {
-         project.layout.projectDirectory.file(configuredPath)
-      }
-   }
-   else {
-      extension.configFile.orElse(project.layout.projectDirectory.file("translationtools.yaml"))
-   }
-   val configFile = configFileProvider.get().asFile
+   val configFile = resolveConfigFile(project, extension).get().asFile
    if (!configFile.exists())
-      throw org.gradle.api.GradleException("TranslationTools config file not found: ${configFile.path}")
+      throw org.gradle.api.GradleException("TranslationTools config file not found: ${configFile.path}. Run ./gradlew.bat initTranslationTools first.")
 
    val parsed = parseConfig(configFile)
    val apiKey = (project.findProperty("translationtools.apiKey") as String?)
@@ -56,6 +48,19 @@ internal data class ResolvedTranslationToolsConfig(
    val config: TranslationToolsConfig,
 )
 
+internal fun resolveConfigFile(project: Project, extension: TranslationToolsExtension): Provider<RegularFile>
+{
+   val configuredPath = project.findProperty("translationtools.config") as String?
+   return if (configuredPath != null) {
+      project.provider {
+         project.layout.projectDirectory.file(configuredPath)
+      }
+   }
+   else {
+      extension.configFile.orElse(project.layout.projectDirectory.file("translationtools.yaml"))
+   }
+}
+
 private fun parseConfig(file: File): TranslationToolsConfig
 {
    val settings = LoadSettings.builder().build()
@@ -63,6 +68,7 @@ private fun parseConfig(file: File): TranslationToolsConfig
       ?: throw org.gradle.api.GradleException("Invalid TranslationTools config: ${file.path}")
 
    val apiKey = loaded["apiKey"] as? String
+   val defaultLocale = loaded["defaultLocale"] as? String
    val locales = (loaded["locales"] as? List<*>)?.map { it.toString() } ?: emptyList()
    val snapshotFile = loaded["snapshotFile"] as? String ?: "translationtools/snapshot.json"
    val generated = loaded["generated"] as? Map<*, *>
@@ -81,6 +87,7 @@ private fun parseConfig(file: File): TranslationToolsConfig
 
    return TranslationToolsConfig(
       apiKey = apiKey,
+      defaultLocale = defaultLocale,
       locales = locales,
       snapshotFile = snapshotFile,
       generated = GeneratedConfig(packageName = packageName, objectName = objectName),
@@ -89,4 +96,21 @@ private fun parseConfig(file: File): TranslationToolsConfig
          keyOverrides = keyOverrides,
       ),
    )
+}
+
+internal fun renderDefaultConfig(): String
+{
+   return """
+          apiKey: your-project-api-key
+          defaultLocale: en
+          locales:
+            - en
+          snapshotFile: translationtools/snapshot.json
+          generated:
+            packageName: com.example.translations
+            objectName: Res
+          androidResources:
+            resourceDirectories:
+              - src/androidMain/res
+          """.trimIndent() + System.lineSeparator()
 }

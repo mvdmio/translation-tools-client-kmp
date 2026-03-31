@@ -70,7 +70,7 @@ class PullTranslationsTaskTests
    }
 
    @Test
-   fun pullSnapshot_should_throw_clear_error_for_invalid_payload() {
+    fun pullSnapshot_should_throw_clear_error_for_invalid_payload() {
       val client = createHttpClient(
          MockEngine {
             respondJson("""{"bad":true}""")
@@ -83,8 +83,29 @@ class PullTranslationsTaskTests
          }
       }
 
-      assertTrue(exception.message.orEmpty().contains("Failed to parse"))
-   }
+       assertTrue(exception.message.orEmpty().contains("Failed to parse"))
+    }
+
+    @Test
+    fun pullSnapshot_should_fall_back_to_first_locale_when_remote_default_locale_is_missing() = runBlocking {
+       val client = createHttpClient(
+          MockEngine { request ->
+             when (request.url.encodedPath) {
+                "/api/v1/translations/project" -> respondJson(
+                   """{"locales":["nl","en"],"defaultLocale":null}"""
+                )
+                "/api/v1/translations/en" -> respondJson("[]")
+                "/api/v1/translations/nl" -> respondJson("[]")
+                else -> error("Unexpected path: ${request.url.encodedPath}")
+             }
+          }
+       )
+
+       val snapshot = pullSnapshot(client, apiKey = "test-key", configuredLocales = emptyList())
+
+       assertEquals("en", snapshot.project.defaultLocale)
+       assertEquals(listOf("en", "nl"), snapshot.project.locales)
+    }
 }
 
 private fun createHttpClient(engine: MockEngine): HttpClient
