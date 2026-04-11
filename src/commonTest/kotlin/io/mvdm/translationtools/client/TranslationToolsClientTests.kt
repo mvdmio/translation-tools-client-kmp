@@ -15,13 +15,16 @@ import kotlin.test.assertTrue
 
 class TranslationToolsClientTests
 {
+   private val homeTitleRef = TranslationRef(TEST_ORIGIN, "home_title")
+   private val checkoutTitleRef = TranslationRef(TEST_ORIGIN, "checkout_title")
+
    @Test
-   fun initialize_should_fetch_default_and_current_locale_snapshots() = runTest {
+    fun initialize_should_fetch_default_and_current_locale_snapshots() = runTest {
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en", "nl"), defaultLocale = "en"),
          localeItems = mapOf(
-            "en" to listOf(TranslationItem("home.title", "Hello")),
-            "nl" to listOf(TranslationItem("home.title", "Hallo")),
+            "en" to listOf(TranslationItem(homeTitleRef, "Hello")),
+            "nl" to listOf(TranslationItem(homeTitleRef, "Hallo")),
          ),
       )
       val client = createClient(api, currentLocale = "nl")
@@ -29,23 +32,23 @@ class TranslationToolsClientTests
       client.initialize()
 
       assertEquals(listOf("en", "nl"), api.localeRequests.sorted())
-      assertEquals("Hallo", client.getCached("home.title", "nl"))
-      assertEquals("Hello", client.getCached("home.title", "en"))
+      assertEquals("Hallo", client.getCached(homeTitleRef, "nl"))
+      assertEquals("Hello", client.getCached(homeTitleRef, "en"))
    }
 
    @Test
    fun get_should_fetch_and_cache_single_item_on_miss() = runTest {
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         singleItems = mutableMapOf("en|checkout.title" to TranslationItem("checkout.title", "Checkout")),
+         singleItems = mutableMapOf("en|$TEST_ORIGIN|checkout_title" to TranslationItem(checkoutTitleRef, "Checkout")),
       )
       val client = createClient(api)
 
-      val value = client.get("checkout.title", "en")
+      val value = client.get(checkoutTitleRef, "en")
 
       assertEquals("Checkout", value)
-      assertEquals(listOf("en|checkout.title|<null>"), api.singleItemRequests)
-      assertEquals("Checkout", client.getCached("checkout.title", "en"))
+      assertEquals(listOf("en|$TEST_ORIGIN|checkout_title|<null>"), api.singleItemRequests)
+      assertEquals("Checkout", client.getCached(checkoutTitleRef, "en"))
    }
 
    @Test
@@ -53,7 +56,7 @@ class TranslationToolsClientTests
       val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
       val client = createClient(api)
 
-      assertNull(client.getCached("missing.key", "en"))
+      assertNull(client.getCached(TranslationRef(TEST_ORIGIN, "missing_key"), "en"))
       assertEquals(emptyList(), api.singleItemRequests)
    }
 
@@ -61,7 +64,7 @@ class TranslationToolsClientTests
    fun getCached_with_resource_should_return_cached_value_before_fallback() = runTest {
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Hello"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello"))),
       )
       val client = createClient(api)
 
@@ -69,7 +72,7 @@ class TranslationToolsClientTests
 
       assertEquals(
          "Hello",
-         client.getCached(TranslationStringResource(key = "home.title", fallback = "Home"), "en"),
+         client.getCached(TranslationStringResource(ref = homeTitleRef, fallback = "Home"), "en"),
       )
    }
 
@@ -80,11 +83,11 @@ class TranslationToolsClientTests
 
       assertEquals(
          "Home",
-         client.getCached(TranslationStringResource(key = "home.title", fallback = "Home"), "en"),
+         client.getCached(TranslationStringResource(ref = homeTitleRef, fallback = "Home"), "en"),
       )
       assertEquals(
-         "home.title",
-         client.getCached(TranslationStringResource(key = "home.title"), "en"),
+         "home_title",
+         client.getCached(TranslationStringResource(ref = homeTitleRef), "en"),
       )
    }
 
@@ -92,14 +95,14 @@ class TranslationToolsClientTests
    fun get_with_resource_should_pass_fallback_to_existing_fetch_path() = runTest {
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         singleItems = mutableMapOf("en|checkout.title" to TranslationItem("checkout.title", null)),
+         singleItems = mutableMapOf("en|$TEST_ORIGIN|checkout_title" to TranslationItem(checkoutTitleRef, null)),
       )
       val client = createClient(api)
 
-      val value = client.get(TranslationStringResource(key = "checkout.title", fallback = "Checkout"), "en")
+      val value = client.get(TranslationStringResource(ref = checkoutTitleRef, fallback = "Checkout"), "en")
 
       assertEquals("Checkout", value)
-      assertEquals(listOf("en|checkout.title|Checkout"), api.singleItemRequests)
+      assertEquals(listOf("en|$TEST_ORIGIN|checkout_title|Checkout"), api.singleItemRequests)
    }
 
    @Test
@@ -109,12 +112,26 @@ class TranslationToolsClientTests
 
       assertEquals(
          "Home",
-         client.observe(TranslationStringResource(key = "home.title", fallback = "Home"), "en").first(),
+         client.observe(TranslationStringResource(ref = homeTitleRef, fallback = "Home"), "en").first(),
       )
       assertEquals(
-         "home.title",
-         client.observe(TranslationStringResource(key = "home.title"), "en").first(),
+         "home_title",
+         client.observe(TranslationStringResource(ref = homeTitleRef), "en").first(),
       )
+   }
+
+   @Test
+   fun get_with_local_only_resource_should_not_fetch_remote() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(api)
+
+      val value = client.get(
+         TranslationStringResource(ref = TranslationRef(TEST_ORIGIN, "about_title"), fallback = "About", managedRemotely = false),
+         "en",
+      )
+
+      assertEquals("About", value)
+      assertTrue(api.singleItemRequests.isEmpty())
    }
 
    @Test
@@ -122,19 +139,19 @@ class TranslationToolsClientTests
       val store = FakeTranslationSnapshotStore(
          stored = StoredTranslations(
             projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem("home.title", "Cached")))),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Cached")))),
             lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
          )
       )
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Fresh"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Fresh"))),
       )
       val client = createClient(api, store = store)
 
       client.initialize()
 
-      assertEquals("Fresh", client.getCached("home.title", "en"))
+      assertEquals("Fresh", client.getCached(homeTitleRef, "en"))
       assertEquals("en", api.localeRequests.single())
       assertEquals("Fresh", store.saved.single().snapshots.single().items.single().value)
    }
@@ -143,13 +160,13 @@ class TranslationToolsClientTests
    fun initialize_should_restore_bundled_snapshot_before_network_when_persisted_store_empty() = runTest {
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Fresh"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Fresh"))),
       )
       val client = createClient(
          api = api,
          bundledSnapshot = StoredTranslations(
             projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem("home.title", "Bundled")))),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Bundled")))),
             lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
          ),
          backgroundRefreshEnabled = false,
@@ -157,7 +174,7 @@ class TranslationToolsClientTests
 
       client.initialize()
 
-      assertEquals("Bundled", client.getCached("home.title", "en"))
+      assertEquals("Bundled", client.getCached(homeTitleRef, "en"))
       assertEquals(0, api.projectRequests)
    }
 
@@ -166,19 +183,19 @@ class TranslationToolsClientTests
       val store = FakeTranslationSnapshotStore(
          stored = StoredTranslations(
             projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem("home.title", "Cached")))),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Cached")))),
             lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
          )
       )
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Fresh"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Fresh"))),
       )
       val client = createClient(api, store = store, backgroundRefreshEnabled = false)
 
       client.initialize()
 
-      assertEquals("Cached", client.getCached("home.title", "en"))
+      assertEquals("Cached", client.getCached(homeTitleRef, "en"))
       assertEquals(0, api.projectRequests)
       assertTrue(store.saved.isEmpty())
    }
@@ -188,7 +205,7 @@ class TranslationToolsClientTests
       val clock = MutableClock(Instant.parse("2026-03-25T10:00:00Z"))
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Hello"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello"))),
       )
       val client = createClient(api, now = clock::now)
 
@@ -205,7 +222,7 @@ class TranslationToolsClientTests
       val clock = MutableClock(Instant.parse("2026-03-25T10:00:00Z"))
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Hello"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello"))),
       )
       val client = createClient(api, now = clock::now)
 
@@ -222,7 +239,7 @@ class TranslationToolsClientTests
       val gate = CompletableDeferred<Unit>()
       val api = FakeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
-         localeItems = mapOf("en" to listOf(TranslationItem("home.title", "Hello"))),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello"))),
          onProjectMetadata = { gate.await() },
       )
       val client = createClient(api, now = clock::now)
@@ -242,7 +259,7 @@ class TranslationToolsClientTests
       val client = createClient(FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en")))
 
       assertFailsWith<TranslationToolsValidationException> {
-         client.get("invalid key", "en")
+         client.get(TranslationRef(TEST_ORIGIN, "invalid key"), "en")
       }
    }
 
@@ -290,9 +307,9 @@ private class FakeTranslationToolsApi(
       return localeItems[locale].orEmpty()
    }
 
-   override suspend fun getTranslation(locale: String, key: String, defaultValue: String?): TranslationItem {
-      singleItemRequests += "$locale|$key|${defaultValue ?: "<null>"}"
-      return singleItems["$locale|$key"] ?: TranslationItem(key, defaultValue)
+   override suspend fun getTranslation(locale: String, ref: TranslationRef, defaultValue: String?): TranslationItem {
+      singleItemRequests += "$locale|${ref.origin}|${ref.key}|${defaultValue ?: "<null>"}"
+      return singleItems["$locale|${ref.origin}|${ref.key}"] ?: TranslationItem(ref, defaultValue)
    }
 }
 
@@ -321,3 +338,5 @@ private class MutableClock(var current: Instant)
 {
    fun now(): Instant = current
 }
+
+private const val TEST_ORIGIN = ":test:/strings.xml"

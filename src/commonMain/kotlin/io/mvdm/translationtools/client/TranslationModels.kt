@@ -11,7 +11,7 @@ public data class ProjectMetadata(
 
 @Serializable
 public data class TranslationItem(
-   val key: String,
+   val ref: TranslationRef,
    val value: String?,
 )
 

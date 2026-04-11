@@ -26,7 +26,7 @@ class TranslationToolsFactoryTests
             )
 
             "/api/v1/translations/en" -> respond(
-               content = """[{"key":"home.title","value":"Hello"}]""",
+               content = """[{"origin":":app:/strings.xml","key":"home_title","value":"Hello"}]""",
                status = HttpStatusCode.OK,
                headers = headersOf("Content-Type", ContentType.Application.Json.toString()),
             )
@@ -52,9 +52,9 @@ class TranslationToolsFactoryTests
          ),
       )
 
-      client.initialize()
+       client.initialize()
 
-      assertEquals(TranslationRefreshStatus.Ready, client.observeRefreshState().first().status)
-      assertEquals("Hello", client.getCached("home.title", "en"))
-   }
+       assertEquals(TranslationRefreshStatus.Ready, client.observeRefreshState().first().status)
+       assertEquals("Hello", client.getCached(TranslationRef(":app:/strings.xml", "home_title"), "en"))
+    }
 }

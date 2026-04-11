@@ -49,28 +49,29 @@ public class TranslationToolsHttpApi(
             addCommonHeaders()
          }
 
-         val bodyText = response.requireSuccessBody()
-         json.decodeFromString<List<TranslationItemResponse>>(bodyText)
-            .map { TranslationItem(it.key, it.value) }
-      }
+          val bodyText = response.requireSuccessBody()
+          json.decodeFromString<List<TranslationItemResponse>>(bodyText)
+             .map { TranslationItem(TranslationRef(it.origin, it.key), it.value) }
+       }
    }
 
-   override suspend fun getTranslation(locale: String, key: String, defaultValue: String?): TranslationItem
+   override suspend fun getTranslation(locale: String, ref: TranslationRef, defaultValue: String?): TranslationItem
    {
       return execute {
-         val response = httpClient.get(BASE_URL) {
-            url {
-               path("api", "v1", "translations", locale, key)
-               if (defaultValue != null)
-                  parameter("defaultValue", defaultValue)
-            }
+          val response = httpClient.get(BASE_URL) {
+             url {
+                path("api", "v1", "translations", locale, ref.key)
+                parameter("origin", ref.origin)
+                if (defaultValue != null)
+                   parameter("defaultValue", defaultValue)
+             }
             addCommonHeaders()
          }
 
-         val bodyText = response.requireSuccessBody()
-         val body = json.decodeFromString<TranslationItemResponse>(bodyText)
-         TranslationItem(body.key, body.value)
-      }
+          val bodyText = response.requireSuccessBody()
+          val body = json.decodeFromString<TranslationItemResponse>(bodyText)
+          TranslationItem(TranslationRef(body.origin, body.key), body.value)
+       }
    }
 
    private fun io.ktor.client.request.HttpRequestBuilder.addCommonHeaders()
@@ -125,6 +126,7 @@ private data class ProjectMetadataResponse(
 
 @Serializable
 private data class TranslationItemResponse(
+   val origin: String,
    val key: String,
    val value: String?,
 )

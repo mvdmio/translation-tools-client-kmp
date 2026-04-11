@@ -18,8 +18,8 @@ class FileTranslationSnapshotStoreTests
       val expected = StoredTranslations(
          projectMetadata = ProjectMetadata(locales = listOf("en", "nl"), defaultLocale = "en"),
          snapshots = listOf(
-            TranslationSnapshot("en", listOf(TranslationItem("home.title", "Hello"))),
-            TranslationSnapshot("nl", listOf(TranslationItem("home.title", "Hallo"))),
+            TranslationSnapshot("en", listOf(TranslationItem(TranslationRef(":app:/strings.xml", "home_title"), "Hello"))),
+            TranslationSnapshot("nl", listOf(TranslationItem(TranslationRef(":app:/strings.xml", "home_title"), "Hallo"))),
          ),
          lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
       )

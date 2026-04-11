@@ -30,8 +30,8 @@ class TranslationToolsConfigTests
        assertEquals("yaml-key", resolved.config.apiKey)
        assertEquals("en", resolved.config.defaultLocale)
        assertEquals(listOf("nl"), resolved.config.locales)
-       assertEquals("com.example.translations", resolved.config.generated.packageName)
-       assertEquals("Res", resolved.config.generated.objectName)
+       assertEquals("com.example.translations", resolved.config.generated?.packageName)
+       assertEquals("Res", resolved.config.generated?.objectName)
    }
 
    @Test
@@ -100,9 +100,9 @@ class TranslationToolsConfigTests
       )
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
 
-      val action = { resolveConfig(project) }
-
-      val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException>(action)
-      assertTrue(exception.message!!.contains("snapshotFile is no longer supported"))
-   }
+       val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+          resolveConfig(project)
+       }
+       assertTrue(exception.message!!.contains("snapshotFile is no longer supported"))
+    }
 }

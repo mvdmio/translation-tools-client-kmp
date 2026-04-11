@@ -10,12 +10,12 @@ data class TranslationToolsConfig(
    val apiKey: String?,
    val defaultLocale: String?,
    val locales: List<String>,
-   val generated: GeneratedConfig,
+   val generated: GeneratedConfig?,
    val androidResources: AndroidResourcesConfig,
 )
 
 data class GeneratedConfig(
-   val packageName: String,
+   val packageName: String?,
    val objectName: String,
 )
 
@@ -67,10 +67,8 @@ private fun parseConfig(file: File): TranslationToolsConfig
       throw org.gradle.api.GradleException("snapshotFile is no longer supported. Use the default project-root snapshot.json path.")
 
    val generated = loaded["generated"] as? Map<*, *>
-      ?: throw org.gradle.api.GradleException("Missing generated config in ${file.path}")
-   val packageName = generated["packageName"] as? String
-      ?: throw org.gradle.api.GradleException("Missing generated.packageName in ${file.path}")
-   val objectName = generated["objectName"] as? String ?: "Res"
+   val packageName = generated?.get("packageName") as? String
+   val objectName = generated?.get("objectName") as? String ?: "Res"
    val androidResources = loaded["androidResources"] as? Map<*, *>
    val resourceDirectories = (androidResources?.get("resourceDirectories") as? List<*>)
       ?.map { it.toString() }
@@ -97,13 +95,13 @@ internal fun renderDefaultConfig(): String
     return """
            apiKey: your-project-api-key
            defaultLocale: en
-           locales:
-             - en
-           generated:
-             packageName: com.example.translations
-             objectName: Res
-          androidResources:
-            resourceDirectories:
+            locales:
+              - en
+            generated:
+              packageName: com.example.translations
+              objectName: Res
+           androidResources:
+             resourceDirectories:
               - src/androidMain/res
           """.trimIndent() + System.lineSeparator()
 }

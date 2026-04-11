@@ -51,7 +51,7 @@ class TranslationToolsHttpApiTests
       val engine = MockEngine { request ->
          capturedPath = request.url.fullPath
          respond(
-            content = """[{"key":"home.title","value":"Hallo"}]""",
+            content = """[{"origin":":app:/strings.xml","key":"home_title","value":"Hallo"}]""",
             status = HttpStatusCode.OK,
             headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
          )
@@ -61,7 +61,7 @@ class TranslationToolsHttpApiTests
       val response = api.getLocale("nl")
 
       assertEquals("/api/v1/translations/nl", capturedPath)
-      assertEquals(listOf(TranslationItem("home.title", "Hallo")), response)
+      assertEquals(listOf(TranslationItem(TranslationRef(":app:/strings.xml", "home_title"), "Hallo")), response)
    }
 
    @Test
@@ -72,18 +72,18 @@ class TranslationToolsHttpApiTests
          capturedPath = request.url.encodedPath
          capturedQuery = request.url.encodedQuery.orEmpty()
          respond(
-            content = """{"key":"home.title","value":"Hello world"}""",
+            content = """{"origin":":app:/strings.xml","key":"home_title","value":"Hello world"}""",
             status = HttpStatusCode.OK,
             headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
          )
       }
       val api = createApi(engine)
 
-      val response = api.getTranslation("en", "home.title", "Hello world")
+      val response = api.getTranslation("en", TranslationRef(":app:/strings.xml", "home_title"), "Hello world")
 
-      assertEquals("/api/v1/translations/en/home.title", capturedPath)
-      assertEquals("defaultValue=Hello+world", capturedQuery)
-      assertEquals(TranslationItem("home.title", "Hello world"), response)
+      assertEquals("/api/v1/translations/en/home_title", capturedPath)
+      assertEquals("origin=%3Aapp%3A%2Fstrings.xml&defaultValue=Hello+world", capturedQuery)
+      assertEquals(TranslationItem(TranslationRef(":app:/strings.xml", "home_title"), "Hello world"), response)
    }
 
    @Test

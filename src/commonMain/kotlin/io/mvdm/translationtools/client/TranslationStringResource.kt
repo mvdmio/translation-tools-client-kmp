@@ -1,6 +1,7 @@
 package io.mvdm.translationtools.client
 
 public data class TranslationStringResource(
-   val key: String,
+   val ref: TranslationRef,
    val fallback: String? = null,
+   val managedRemotely: Boolean = true,
 )

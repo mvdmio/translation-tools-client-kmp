@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class TranslationToolsTaskRegistrationTests
 {
    @Test
-   fun tasks_should_include_init_and_migrate_translationtools_tasks()
+   fun tasks_should_include_init_pull_and_push_translationtools_tasks()
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeFunctionalBuildFiles(projectDir)
@@ -29,7 +29,8 @@ class TranslationToolsTaskRegistrationTests
          .build()
 
       assertTrue(result.output.contains("initTranslationTools"))
-      assertTrue(result.output.contains("migrateTranslations"))
+      assertTrue(result.output.contains("pullTranslations"))
+      assertTrue(result.output.contains("pushTranslations"))
    }
 }
 

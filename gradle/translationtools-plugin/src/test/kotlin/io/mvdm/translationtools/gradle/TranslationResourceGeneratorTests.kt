@@ -6,6 +6,13 @@ import kotlin.test.assertTrue
 
 class TranslationResourceGeneratorTests
 {
+   private val baseProject = AndroidTranslationProject(
+      defaultLocale = "en",
+      locales = listOf("en", "nl"),
+      entries = emptyList(),
+      warnings = emptyList(),
+   )
+
    @Test
    fun sanitizeKey_should_handle_common_cases()
    {
@@ -19,19 +26,16 @@ class TranslationResourceGeneratorTests
    @Test
    fun generate_should_add_stable_hash_suffix_for_collisions()
    {
-      val snapshot = TranslationSnapshotFile(
-         schemaVersion = 1,
-         project = SnapshotProject(defaultLocale = "en", locales = listOf("en")),
-         translations = mapOf(
-            "en" to mapOf(
-               "home.title" to "Home",
-               "home-title" to "Home dash",
-            ),
+      val project = baseProject.copy(
+         locales = listOf("en"),
+         entries = listOf(
+            AndroidTranslationEntry(":app:/strings.xml", "home.title", "home.title", mapOf("en" to "Home"), "strings.xml", true),
+            AndroidTranslationEntry(":app:/strings.xml", "home-title", "home-title", mapOf("en" to "Home dash"), "strings.xml", true),
          ),
       )
 
       val result = renderTranslationResources(
-         snapshot = snapshot,
+         project = project,
          packageName = "com.example.translations",
          objectName = "Res",
       )
@@ -39,28 +43,21 @@ class TranslationResourceGeneratorTests
       assertTrue(result.contains("home_title__"))
       assertTrue(result.contains("key = \"home.title\""))
       assertTrue(result.contains("key = \"home-title\""))
-   }
+      assertTrue(result.contains("TranslationRef("))
+    }
 
    @Test
    fun generate_should_sort_entries_and_embed_default_locale_fallbacks()
    {
-      val snapshot = TranslationSnapshotFile(
-         schemaVersion = 1,
-         project = SnapshotProject(defaultLocale = "en", locales = listOf("nl", "en")),
-         translations = mapOf(
-            "nl" to mapOf(
-               "z.key" to "Zed",
-               "a.key" to "A",
-            ),
-            "en" to mapOf(
-               "z.key" to "Zee",
-               "a.key" to "Aye",
-            ),
+      val project = baseProject.copy(
+         entries = listOf(
+            AndroidTranslationEntry(":app:/strings.xml", "z.key", "z.key", mapOf("en" to "Zee", "nl" to "Zed"), "strings.xml", true),
+            AndroidTranslationEntry(":app:/strings.xml", "a.key", "a.key", mapOf("en" to "Aye", "nl" to "A"), "strings.xml", true),
          ),
       )
 
       val result = renderTranslationResources(
-         snapshot = snapshot,
+         project = project,
          packageName = "com.example.translations",
          objectName = "Res",
       )

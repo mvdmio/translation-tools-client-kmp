@@ -3,6 +3,7 @@ package io.mvdm.translationtools.client.compose
 import io.mvdm.translationtools.client.ProjectMetadata
 import io.mvdm.translationtools.client.StoredTranslations
 import io.mvdm.translationtools.client.TranslationItem
+import io.mvdm.translationtools.client.TranslationRef
 import io.mvdm.translationtools.client.TranslationSnapshotStore
 import io.mvdm.translationtools.client.TranslationStringResource
 import io.mvdm.translationtools.client.TranslationToolsApi
@@ -30,13 +31,13 @@ class TranslationStringResourcesTests
    @Test
    fun initialStringResourceValue_should_use_cached_value() = runTest {
       val client = createClient(
-         localeItems = listOf(TranslationItem("home.title", "Home")),
+         localeItems = listOf(TranslationItem(TranslationRef(TEST_ORIGIN, "home_title"), "Home")),
       )
       client.initialize()
 
       assertEquals(
          "Home",
-         initialStringResourceValue(client, TranslationStringResource("home.title", "Fallback"), "en"),
+         initialStringResourceValue(client, TranslationStringResource(TranslationRef(TEST_ORIGIN, "home_title"), "Fallback"), "en"),
       )
    }
 
@@ -46,11 +47,11 @@ class TranslationStringResourcesTests
 
       assertEquals(
          "Fallback",
-         initialStringResourceValue(client, TranslationStringResource("missing.key", "Fallback"), "en"),
+         initialStringResourceValue(client, TranslationStringResource(TranslationRef(TEST_ORIGIN, "missing_key"), "Fallback"), "en"),
       )
       assertEquals(
-         "missing.key",
-         initialStringResourceValue(client, TranslationStringResource("missing.key"), "en"),
+         "missing_key",
+         initialStringResourceValue(client, TranslationStringResource(TranslationRef(TEST_ORIGIN, "missing_key")), "en"),
       )
    }
 }
@@ -80,11 +81,13 @@ private class FakeComposeTranslationToolsApi(
 
    override suspend fun getLocale(locale: String): List<TranslationItem> = localeItems
 
-   override suspend fun getTranslation(locale: String, key: String, defaultValue: String?): TranslationItem
+   override suspend fun getTranslation(locale: String, ref: TranslationRef, defaultValue: String?): TranslationItem
    {
-      return localeItems.firstOrNull { it.key == key } ?: TranslationItem(key, defaultValue)
+      return localeItems.firstOrNull { it.ref == ref } ?: TranslationItem(ref, defaultValue)
    }
 }
+
+private const val TEST_ORIGIN = ":test:/strings.xml"
 
 private object NoOpSnapshotStore : TranslationSnapshotStore
 {

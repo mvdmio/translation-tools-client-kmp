@@ -23,10 +23,9 @@ class AndroidResourceMigrationTests
          """.trimIndent(),
       )
 
-      assertEquals(mapOf("action_save" to "Save"), parsed.imported)
+      assertEquals(listOf(ParsedAndroidResourceValue("action_save", "Save", true), ParsedAndroidResourceValue("hidden_label", "Hidden", false)), parsed.imported)
       assertEquals(
          listOf(
-            "hidden_label: translatable=false",
             "cart_items: plurals are not supported",
             "menu_entries: string-array is not supported",
          ),
@@ -41,11 +40,12 @@ class AndroidResourceMigrationTests
       writeStringsFile(resourceDir, "values", "<resources><string name=\"action_save\">Save</string></resources>")
       writeStringsFile(resourceDir, "values-nl", "<resources><string name=\"only_nl\">Alleen nl</string></resources>")
 
-      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap())
+      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap(), projectPath = ":app")
 
       assertEquals(listOf("en", "nl"), state.locales)
-      assertEquals(null, state.translations.getValue("only_nl")["en"])
-      assertEquals("Alleen nl", state.translations.getValue("only_nl")["nl"])
+      val onlyNl = state.entries.single { it.key == "only_nl" }
+      assertEquals(null, onlyNl.valuesByLocale["en"])
+      assertEquals("Alleen nl", onlyNl.valuesByLocale["nl"])
    }
 
    @Test
@@ -55,7 +55,7 @@ class AndroidResourceMigrationTests
       writeStringsFile(resourceDir, "values", "<resources><string name=\"action_save\">Save</string></resources>")
       writeStringsFile(resourceDir, "values-nl", "<resources></resources>")
 
-      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap())
+      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap(), projectPath = ":app")
 
       assertEquals(listOf("en", "nl"), state.locales)
       assertTrue(state.warnings.any { it.contains("values-nl", ignoreCase = true) })
@@ -68,10 +68,11 @@ class AndroidResourceMigrationTests
       writeStringsFile(resourceDir, "values", "<resources></resources>")
       writeStringsFile(resourceDir, "values-nl", "<resources><string name=\"action_save\">Opslaan</string></resources>")
 
-      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap())
+      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap(), projectPath = ":app")
 
-      assertEquals(null, state.translations.getValue("action_save")["en"])
-      assertEquals("Opslaan", state.translations.getValue("action_save")["nl"])
+      val actionSave = state.entries.single { it.key == "action_save" }
+      assertEquals(null, actionSave.valuesByLocale["en"])
+      assertEquals("Opslaan", actionSave.valuesByLocale["nl"])
    }
 
    @Test
@@ -81,9 +82,9 @@ class AndroidResourceMigrationTests
       writeStringsFile(resourceDir, "values", "<resources></resources>")
       writeStringsFile(resourceDir, "values-nl", "<resources></resources>")
 
-      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap())
+      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap(), projectPath = ":app")
 
-      assertEquals(emptyMap(), state.translations)
+      assertEquals(emptyList(), state.entries)
       assertTrue(state.warnings.any { it.contains("empty translation payload") })
    }
 
@@ -93,7 +94,7 @@ class AndroidResourceMigrationTests
       val resourceDir = createTempDirectory("translationtools-android-resources").toFile()
 
       val exception = assertFailsWith<IllegalStateException> {
-         AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap())
+         AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap(), projectPath = ":app")
       }
 
       assertTrue(exception.message.orEmpty().contains("No Android locale directories"))
@@ -117,8 +118,8 @@ class AndroidResourceMigrationTests
       writeStringsFile(resourceDirB, "values-nl", "<resources><string name=\"action_cancel\">Annuleren</string></resources>")
 
       val exception = assertFailsWith<IllegalStateException> {
-         discoverLocaleFiles(listOf(resourceDirA, resourceDirB), "en")
-      }
+          discoverLocaleFiles(listOf(resourceDirA, resourceDirB), "en")
+       }
 
       assertTrue(exception.message.orEmpty().contains("same locale"))
    }
@@ -129,9 +130,9 @@ class AndroidResourceMigrationTests
       val resourceDir = createTempDirectory("translationtools-android-resources").toFile()
       writeStringsFile(resourceDir, "values", "<resources><string name=\"action_save\">Save</string></resources>")
 
-      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap())
+      val state = AndroidStringResourceParser().parse(listOf(resourceDir), defaultLocale = "en", keyOverrides = emptyMap(), projectPath = ":app")
 
-      assertTrue(state.translations.containsKey("action_save"))
+      assertTrue(state.entries.any { it.key == "action_save" && it.origin == ":app:/strings.xml" })
    }
 
    @Test

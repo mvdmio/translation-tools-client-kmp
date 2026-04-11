@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class TranslationToolsPluginFunctionalTests
 {
    @Test
-    fun generateTranslationResources_should_generate_res_file_from_snapshot()
+    fun generateTranslationResources_should_generate_res_file_from_xml()
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
@@ -24,24 +24,20 @@ class TranslationToolsPluginFunctionalTests
             generated:
               packageName: com.example.translations
               objectName: Res
-           """.trimIndent()
+            androidResources:
+              resourceDirectories:
+                - src/androidMain/res
+            """.trimIndent()
+        )
+       File(projectDir, "src/androidMain/res/values").mkdirs()
+       File(projectDir, "src/androidMain/res/values/strings.xml").writeText(
+           """
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+             <string name="home_title">Home</string>
+          </resources>
+          """.trimIndent()
        )
-       File(projectDir, "snapshot.json").writeText(
-          """
-          {
-           "schemaVersion": 1,
-           "project": {
-             "defaultLocale": "en",
-             "locales": ["en"]
-           },
-           "translations": {
-             "en": {
-               "home.title": "Home"
-             }
-           }
-         }
-         """.trimIndent()
-      )
 
       val result = GradleRunner.create()
          .withProjectDir(projectDir)
@@ -52,13 +48,14 @@ class TranslationToolsPluginFunctionalTests
        assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
        val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt")
        val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/ResBundledSnapshot.kt")
-       assertTrue(generated.exists())
-       assertTrue(bundled.exists())
-       assertTrue(generated.readText().contains("val home_title"))
-   }
+        assertTrue(generated.exists())
+        assertTrue(bundled.exists())
+        assertTrue(generated.readText().contains("val home_title"))
+        assertTrue(generated.readText().contains("TranslationRef"))
+    }
 
-   @Test
-   fun generateTranslationResources_should_fail_when_snapshot_is_missing()
+    @Test
+   fun generateTranslationResources_should_fail_when_xml_is_missing()
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
@@ -78,6 +75,7 @@ class TranslationToolsPluginFunctionalTests
          .buildAndFail()
 
       assertTrue(result.output.contains("BUILD FAILED"))
+      assertTrue(result.output.contains("No Android XML string resources found"))
       assertTrue(
          !File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt").exists()
       )
@@ -97,24 +95,20 @@ class TranslationToolsPluginFunctionalTests
             generated:
               packageName: com.example.translations
               objectName: Res
+            androidResources:
+              resourceDirectories:
+                - src/androidMain/res
+            """.trimIndent()
+        )
+       File(projectDir, "src/androidMain/res/values").mkdirs()
+       File(projectDir, "src/androidMain/res/values/strings.xml").writeText(
+           """
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+             <string name="home_title">Home</string>
+          </resources>
            """.trimIndent()
        )
-       File(projectDir, "snapshot.json").writeText(
-          """
-          {
-           "schemaVersion": 1,
-           "project": {
-             "defaultLocale": "en",
-             "locales": ["en"]
-           },
-           "translations": {
-             "en": {
-               "home.title": "Home"
-              }
-            }
-          }
-          """.trimIndent()
-      )
 
       val result = GradleRunner.create()
          .withProjectDir(projectDir)
@@ -140,21 +134,6 @@ class TranslationToolsPluginFunctionalTests
 
       assertEquals(TaskOutcome.SUCCESS, result.task(":initTranslationTools")?.outcome)
       assertTrue(File(projectDir, "translationtools.yaml").exists())
-   }
-
-   @Test
-   fun migrateTranslations_should_fail_when_config_is_missing()
-   {
-      val projectDir = createTempDirectory("translationtools-functional").toFile()
-      writeBuildFiles(projectDir)
-
-      val result = GradleRunner.create()
-         .withProjectDir(projectDir)
-         .withPluginClasspath()
-         .withArguments("migrateTranslations")
-         .buildAndFail()
-
-      assertTrue(result.output.contains("initTranslationTools"))
    }
 }
 

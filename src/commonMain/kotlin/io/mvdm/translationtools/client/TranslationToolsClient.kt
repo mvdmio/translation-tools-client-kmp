@@ -28,7 +28,7 @@ public class TranslationToolsClient(
 
    private val refreshLock = Mutex()
    private val projectMetadataFlow = MutableStateFlow<ProjectMetadata?>(null)
-   private val translationsFlow = MutableStateFlow<Map<String, Map<String, TranslationItem>>>(emptyMap())
+   private val translationsFlow = MutableStateFlow<Map<String, Map<TranslationRef, TranslationItem>>>(emptyMap())
    private val refreshStateFlow = MutableStateFlow(TranslationRefreshState())
    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
    private var lastSuccessfulRefreshAt: Instant? = null
@@ -77,50 +77,65 @@ public class TranslationToolsClient(
       }
    }
 
-   public fun getCached(key: String, locale: String? = null): String?
+   public fun getCached(ref: TranslationRef, locale: String? = null): String?
    {
-      val validatedKey = validateKey(key)
+      val validatedRef = validateRef(ref)
       val resolvedLocale = resolveLocale(locale)
-      return translationsFlow.value[resolvedLocale]?.get(validatedKey)?.value
+      return translationsFlow.value[resolvedLocale]?.get(validatedRef)?.value
    }
 
    public fun getCached(resource: TranslationStringResource, locale: String? = null): String
    {
-      return getCached(resource.key, locale) ?: resource.fallback ?: resource.key
+      return getCached(resource.ref, locale) ?: resource.fallback ?: resource.ref.key
    }
 
-   public suspend fun get(key: String, locale: String? = null, defaultValue: String? = null): String
+   public suspend fun get(ref: TranslationRef, locale: String? = null, defaultValue: String? = null): String
    {
-      val validatedKey = validateKey(key)
+      val validatedRef = validateRef(ref)
       val resolvedLocale = resolveLocale(locale)
-      val cachedItem = translationsFlow.value[resolvedLocale]?.get(validatedKey)
+      val cachedItem = translationsFlow.value[resolvedLocale]?.get(validatedRef)
       if (cachedItem != null)
-         return cachedItem.value ?: defaultValue ?: validatedKey
+         return cachedItem.value ?: defaultValue ?: validatedRef.key
 
-      val fetched = api.getTranslation(resolvedLocale, validatedKey, defaultValue)
+      val fetched = api.getTranslation(resolvedLocale, validatedRef, defaultValue)
       putItem(resolvedLocale, fetched)
       persist()
-      return fetched.value ?: defaultValue ?: validatedKey
+      return fetched.value ?: defaultValue ?: validatedRef.key
+   }
+
+   public suspend fun get(origin: String, key: String, locale: String? = null, defaultValue: String? = null): String
+   {
+      return get(TranslationRef(origin = origin, key = key), locale, defaultValue)
    }
 
    public suspend fun get(resource: TranslationStringResource, locale: String? = null): String
    {
-      return get(resource.key, locale, resource.fallback)
+      return if (resource.managedRemotely) {
+         get(resource.ref, locale, resource.fallback)
+      }
+      else {
+         getCached(resource, locale)
+      }
    }
 
-   public fun observe(key: String, locale: String? = null): Flow<String?>
+   public fun observe(ref: TranslationRef, locale: String? = null): Flow<String?>
    {
-      val validatedKey = validateKey(key)
+      val validatedRef = validateRef(ref)
       return translationsFlow.map {
          val resolvedLocale = resolveLocale(locale)
-         it[resolvedLocale]?.get(validatedKey)?.value
+         it[resolvedLocale]?.get(validatedRef)?.value
       }.distinctUntilChanged()
+   }
+
+   public fun observe(origin: String, key: String, locale: String? = null): Flow<String?>
+   {
+      return observe(TranslationRef(origin = origin, key = key), locale)
    }
 
    public fun observe(resource: TranslationStringResource, locale: String? = null): Flow<String>
    {
-      return observe(resource.key, locale)
-         .map { it ?: resource.fallback ?: resource.key }
+      return observe(resource.ref, locale)
+         .map { it ?: resource.fallback ?: resource.ref.key }
          .distinctUntilChanged()
    }
 
@@ -159,7 +174,7 @@ public class TranslationToolsClient(
             val metadata = api.getProjectMetadata().normalize()
             val locales = selectLocales(metadata)
             val snapshots = locales.map { locale ->
-               TranslationSnapshot(locale, api.getLocale(locale).map { item -> item.copy(key = validateKey(item.key)) })
+               TranslationSnapshot(locale, api.getLocale(locale).map { item -> item.copy(ref = validateRef(item.ref)) })
             }
 
             val completedAt = now()
@@ -185,7 +200,7 @@ public class TranslationToolsClient(
    {
       projectMetadataFlow.value = stored.projectMetadata?.normalize()
       translationsFlow.value = stored.snapshots.associate { snapshot ->
-         normalizeLocale(snapshot.locale) to snapshot.items.associateBy { validateKey(it.key) }
+         normalizeLocale(snapshot.locale) to snapshot.items.associateBy { validateRef(it.ref) }
       }
       lastSuccessfulRefreshAt = stored.lastSuccessfulRefreshAt
       refreshStateFlow.value = TranslationRefreshState(
@@ -211,7 +226,7 @@ public class TranslationToolsClient(
    {
       projectMetadataFlow.value = metadata
       translationsFlow.value = snapshots.associate { snapshot ->
-         normalizeLocale(snapshot.locale) to snapshot.items.associateBy { validateKey(it.key) }
+         normalizeLocale(snapshot.locale) to snapshot.items.associateBy { validateRef(it.ref) }
       }
       lastSuccessfulRefreshAt = completedAt
    }
@@ -219,11 +234,11 @@ public class TranslationToolsClient(
    private fun putItem(locale: String, item: TranslationItem)
    {
       val normalizedLocale = normalizeLocale(locale)
-      val validatedKey = validateKey(item.key)
+      val validatedRef = validateRef(item.ref)
 
       translationsFlow.update { current ->
          val localeItems = current[normalizedLocale].orEmpty().toMutableMap()
-         localeItems[validatedKey] = item.copy(key = validatedKey)
+         localeItems[validatedRef] = item.copy(ref = validatedRef)
          current + (normalizedLocale to localeItems)
       }
    }
@@ -274,6 +289,14 @@ public class TranslationToolsClient(
 }
 
 private val validKeyRegex = Regex("^[A-Za-z0-9._-]+$")
+
+private fun validateRef(ref: TranslationRef): TranslationRef
+{
+   if (ref.origin.isBlank())
+      throw TranslationToolsValidationException("Translation origin is required.")
+
+   return ref.copy(key = validateKey(ref.key))
+}
 
 private fun validateKey(key: String): String
 {

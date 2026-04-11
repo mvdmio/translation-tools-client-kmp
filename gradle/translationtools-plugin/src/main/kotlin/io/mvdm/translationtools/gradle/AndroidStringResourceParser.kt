@@ -5,21 +5,15 @@ import java.io.StringReader
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
 
-internal data class AndroidProjectTranslationState(
-   val defaultLocale: String,
-   val locales: List<String>,
-   val translations: Map<String, Map<String, String?>>,
-   val warnings: List<String>,
-)
-
-internal data class AndroidResourceLocaleFile(
-   val locale: String,
-   val stringsFile: File,
-)
-
 internal data class SkippedAndroidResource(
    val resourceName: String,
    val reason: String,
+)
+
+internal data class ParsedAndroidResourceValue(
+   val resourceName: String,
+   val value: String?,
+   val managedRemotely: Boolean,
 )
 
 internal class AndroidStringResourceParser
@@ -28,78 +22,111 @@ internal class AndroidStringResourceParser
       resourceDirectories: List<File>,
       defaultLocale: String,
       keyOverrides: Map<String, String>,
-   ): AndroidProjectTranslationState
+      projectPath: String,
+   ): AndroidTranslationProject
    {
-      val localeFiles = discoverLocaleFiles(resourceDirectories, defaultLocale)
+      val discovery = discoverLocaleFiles(resourceDirectories, defaultLocale)
+      val localeFiles = discovery.files
       if (localeFiles.isEmpty())
-         throw IllegalStateException("No Android locale directories with strings.xml files were found.")
+         throw IllegalStateException("No Android locale directories with XML string resources were found.")
 
-      val warnings = mutableListOf<String>()
-      val collected = linkedMapOf<String, MutableMap<String, String?>>()
+      val warnings = discovery.warnings.toMutableList()
+      val collected = linkedMapOf<Pair<String, String>, MutableMap<String, String?>>()
+      val metadata = linkedMapOf<Pair<String, String>, Pair<String, Boolean>>()
 
       localeFiles.forEach { localeFile ->
-         val parsed = parseStringsFile(localeFile.stringsFile.readText())
+         val parsed = parseStringsFile(localeFile.file.readText())
          if (parsed.imported.isEmpty())
-            warnings += "No importable strings found in '${localeFile.stringsFile.path}'. Locale '${localeFile.locale}' kept in locale metadata."
+            warnings += "No importable strings found in '${localeFile.file.path}'. Locale '${localeFile.locale}' kept in locale metadata."
 
-         warnings += parsed.skipped.map { "Skipped '${it.resourceName}' in '${localeFile.stringsFile.name}': ${it.reason}." }
+         warnings += parsed.skipped.map { "Skipped '${it.resourceName}' in '${localeFile.file.name}': ${it.reason}." }
 
-         parsed.imported.forEach { (resourceName, value) ->
-            val translationKey = keyOverrides[resourceName] ?: resourceName
-            collected.getOrPut(translationKey) { linkedMapOf() }[localeFile.locale] = value
+         parsed.imported.forEach { entry ->
+            val translationKey = keyOverrides[entry.resourceName] ?: entry.resourceName
+            val origin = buildOrigin(projectPath, localeFile.relativeBaseFile)
+            val ref = origin to translationKey
+            collected.getOrPut(ref) { linkedMapOf() }[localeFile.locale] = entry.value
+            metadata.putIfAbsent(ref, localeFile.relativeBaseFile to entry.managedRemotely)
          }
       }
 
       val locales = localeFiles.map { it.locale }.distinct().sorted()
-      val items = collected.toSortedMap().mapValues { (_, perLocale) ->
-         locales.associateWith { locale -> perLocale[locale] }.toSortedMap()
+      val items = collected.toSortedMap(compareBy<Pair<String, String>> { it.first }.thenBy { it.second }).map { (ref, perLocale) ->
+         val (origin, key) = ref
+         val (baseFile, managedRemotely) = metadata.getValue(ref)
+         AndroidTranslationEntry(
+            origin = origin,
+            resourceName = key,
+            key = key,
+            valuesByLocale = locales.associateWith { locale -> perLocale[locale] }.toSortedMap(),
+            owningBaseFile = baseFile,
+            managedRemotely = managedRemotely,
+         )
       }
 
       if (items.isEmpty())
          warnings += "All discovered Android locale directories were empty. Importing locale metadata with an empty translation payload."
 
-      return AndroidProjectTranslationState(
+      return AndroidTranslationProject(
          defaultLocale = normalizeAndroidTranslationLocale(defaultLocale),
          locales = locales,
-         translations = items,
+         entries = items,
          warnings = warnings,
       )
    }
 }
 
 internal data class ParsedAndroidStringsFile(
-   val imported: Map<String, String?>,
+   val imported: List<ParsedAndroidResourceValue>,
    val skipped: List<SkippedAndroidResource>,
 )
 
-internal fun discoverLocaleFiles(resourceDirectories: List<File>, defaultLocale: String): List<AndroidResourceLocaleFile>
+internal data class AndroidResourceDiscovery(
+   val files: List<AndroidResourceVariantFile>,
+   val warnings: List<String>,
+)
+
+internal fun discoverLocaleFiles(resourceDirectories: List<File>, defaultLocale: String): AndroidResourceDiscovery
 {
    val normalizedDefaultLocale = normalizeAndroidTranslationLocale(defaultLocale)
+   val warnings = mutableListOf<String>()
    val discovered = resourceDirectories
-      .distinct()
-      .filter { it.exists() }
-      .flatMap { directory ->
-         directory.listFiles()
-            ?.filter { it.isDirectory && it.name.startsWith("values") }
-            ?.sortedBy { it.name }
-            .orEmpty()
-            .mapNotNull { valuesDirectory ->
-               val locale = resolveAndroidLocale(valuesDirectory.name, normalizedDefaultLocale) ?: return@mapNotNull null
-               val stringsFile = File(valuesDirectory, "strings.xml")
-               if (!stringsFile.exists())
-                  return@mapNotNull null
+       .distinct()
+       .filter { it.exists() }
+       .flatMap { directory ->
+          directory.listFiles()
+             ?.filter { it.isDirectory && it.name.startsWith("values") }
+             ?.sortedBy { it.name }
+             .orEmpty()
+             .flatMap valuesDirectoryLoop@{ valuesDirectory ->
+                 val locale = resolveAndroidLocale(valuesDirectory.name, normalizedDefaultLocale)
+                 if (locale == null) {
+                    warnings += "Ignored unsupported resource qualifier directory '${valuesDirectory.path}'."
+                    return@valuesDirectoryLoop emptyList()
+                 }
 
-               AndroidResourceLocaleFile(locale = locale, stringsFile = stringsFile)
-            }
-      }
+                 valuesDirectory.listFiles()
+                   ?.filter { it.isFile && it.extension.equals("xml", ignoreCase = true) }
+                   ?.sortedBy { it.name }
+                   .orEmpty()
+                   .map { file ->
+                       AndroidResourceVariantFile(
+                          locale = locale,
+                          file = file,
+                          resourceDirectory = directory,
+                          relativeBaseFile = file.name,
+                       )
+                   }
+             }
+       }
 
-   val collisions = discovered.groupBy { it.locale }.filterValues { it.size > 1 }
+   val collisions = discovered.groupBy { it.locale to it.relativeBaseFile }.filterValues { it.size > 1 }
    if (collisions.isNotEmpty()) {
-      val detail = collisions.entries.joinToString(", ") { (locale, files) -> "$locale -> ${files.joinToString(", ") { it.stringsFile.path }}" }
-      throw IllegalStateException("Multiple Android directories normalize to the same locale: $detail")
+      val detail = collisions.entries.joinToString(", ") { (entry, files) -> "${entry.first}:${entry.second} -> ${files.joinToString(", ") { it.file.path }}" }
+      throw IllegalStateException("Multiple Android resource files normalize to the same locale and base file: $detail")
    }
 
-   return discovered
+   return AndroidResourceDiscovery(discovered, warnings)
 }
 
 internal fun resolveAndroidLocale(directoryName: String, defaultLocale: String): String?
@@ -133,8 +160,8 @@ internal fun parseStringsFile(xml: String): ParsedAndroidStringsFile
       setFeature("http://xml.org/sax/features/external-parameter-entities", false)
    }.newDocumentBuilder()
    val document = documentBuilder.parse(InputSource(StringReader(xml)))
-   val resources = document.documentElement ?: return ParsedAndroidStringsFile(emptyMap(), emptyList())
-   val imported = linkedMapOf<String, String?>()
+   val resources = document.documentElement ?: return ParsedAndroidStringsFile(emptyList(), emptyList())
+   val imported = mutableListOf<ParsedAndroidResourceValue>()
    val skipped = mutableListOf<SkippedAndroidResource>()
    val seenNames = mutableSetOf<String>()
    val children = resources.childNodes
@@ -150,12 +177,12 @@ internal fun parseStringsFile(xml: String): ParsedAndroidStringsFile
 
       when (node.nodeName) {
          "string" -> {
-            if (node.attributes?.getNamedItem("translatable")?.nodeValue == "false") {
-               skipped += SkippedAndroidResource(name, "translatable=false")
-               continue
-            }
-
-            imported[name] = node.textContent.takeUnless { it == "" }
+            val managedRemotely = node.attributes?.getNamedItem("translatable")?.nodeValue != "false"
+            imported += ParsedAndroidResourceValue(
+               resourceName = name,
+               value = node.textContent.takeUnless { it == "" },
+               managedRemotely = managedRemotely,
+            )
          }
 
          "plurals" -> skipped += SkippedAndroidResource(name, "plurals are not supported")
@@ -163,5 +190,16 @@ internal fun parseStringsFile(xml: String): ParsedAndroidStringsFile
       }
    }
 
-   return ParsedAndroidStringsFile(imported = imported.toMap(), skipped = skipped)
+   return ParsedAndroidStringsFile(imported = imported.toList(), skipped = skipped)
+}
+
+internal fun buildOrigin(projectPath: String, relativeBaseFile: String): String
+{
+   val normalizedProjectPath = projectPath.ifBlank { ":" }
+   return if (normalizedProjectPath == ":") {
+      ":/$relativeBaseFile"
+   }
+   else {
+      "$normalizedProjectPath:/$relativeBaseFile"
+   }
 }

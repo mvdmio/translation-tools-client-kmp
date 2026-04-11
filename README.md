@@ -1,13 +1,13 @@
 # translationtools-client-kmp
 
-Kotlin Multiplatform TranslationTools runtime client.
+Kotlin Multiplatform TranslationTools client with XML-first resource generation.
 
 ## Install
 
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/0.6.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/1.0.0/
 ```
 
 Repository:
@@ -22,7 +22,7 @@ Dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:0.6.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:1.0.0")
 }
 ```
 
@@ -30,7 +30,7 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "0.6.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "1.0.0" }
 ```
 
 ```kotlin
@@ -39,32 +39,21 @@ dependencies {
 }
 ```
 
-## What it does
+Compose artifact:
 
-- bootstrap translations from `https://translations.mvdm.io`
-- bootstrap first launch from bundled `snapshot.json`
-- keep reads local after bootstrap
-- persist snapshots locally for next app launch
-- refresh in background after successful startup restore by default
+```kotlin
+dependencies {
+    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.0")
+}
+```
 
-Runtime model:
+## What changed in 1.0.0
 
-1. create `TranslationToolsClient`
-2. call `initialize()` during startup
-3. restore persisted snapshots when configured
-4. otherwise restore bundled snapshot when provided
-5. if nothing restored, do blocking refresh
-6. if restored, do background refresh by default
-5. read translations from in-memory cache
-6. call `refreshIfStale()` when returning to foreground
-
-Default refresh behavior:
-
-- blocking refresh on `initialize()` only when no persisted or bundled snapshot exists
-- background refresh after successful persisted/bundled restore by default
-- refresh on foreground only when older than 1 hour
-- no background timer
-- no WebSocket/live sync
+- local Android XML is now the build-time source of truth
+- generated resources are origin-aware and backed by `TranslationRef`
+- runtime-backed usage goes through `Res.string.*`
+- raw key-only public APIs were removed
+- the library no longer uses committed `snapshot.json` as the normal generation input
 
 ## Targets
 
@@ -73,6 +62,131 @@ Default refresh behavior:
 - `iosX64`
 - `iosArm64`
 - `iosSimulatorArm64`
+
+## Developer workflow
+
+1. Edit Android XML under `src/androidMain/res/values*/**/*.xml`
+2. Use generated `Res.string.*` in Android and shared code
+3. Run `pushTranslations` to upload local XML to TranslationTools
+4. Run `pullTranslations` to merge remote updates into local XML
+
+## XML-first setup
+
+Keep your checked-in XML files under Android resource folders, for example:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_title">Home</string>
+    <string name="checkout_title">Checkout</string>
+</resources>
+```
+
+Add `translationtools.yaml` at the repo root:
+
+```yaml
+apiKey: your-project-api-key
+defaultLocale: en
+locales:
+  - en
+generated:
+  packageName: io.mvdm.translationtools.client.resources
+  objectName: Res
+androidResources:
+  resourceDirectories:
+    - src/androidMain/res
+  keyOverrides: {}
+```
+
+Optional API key sources, highest priority first:
+
+1. `-Ptranslationtools.apiKey=...`
+2. `TRANSLATIONTOOLS_API_KEY`
+3. `apiKey` in `translationtools.yaml`
+
+Notes:
+
+- `translationtools.yaml` is primarily for sync config and overrides
+- build-only generation can rely on defaults if your XML lives under `src/androidMain/res`
+- generated package defaults to `android.namespace + ".translations"` when not configured explicitly
+
+## Gradle tasks
+
+Init starter config:
+
+```bash
+./gradlew.bat initTranslationTools
+```
+
+Generate Kotlin sources from local XML:
+
+```bash
+./gradlew.bat generateTranslationResources
+```
+
+Pull remote translations into local XML:
+
+```bash
+./gradlew.bat pullTranslations
+```
+
+Push local XML to TranslationTools:
+
+```bash
+./gradlew.bat pushTranslations
+```
+
+Workflow notes:
+
+- `generateTranslationResources` reads local XML, not `snapshot.json`
+- `pullTranslations` updates local XML files and then regenerates Kotlin sources
+- unknown remote origins are ignored with warnings
+- new remote keys for known origins are added to the mapped local XML file
+- `pushTranslations` uploads local XML and does not auto-run `pullTranslations`
+- remote deletions require explicit prune mode
+- do not commit `build/generated/...`
+
+## Generated API
+
+The generated facade is `Res.string.*`.
+
+Example generated shape:
+
+```kotlin
+public object Res {
+    public object string {
+        public val home_title: TranslationStringResource =
+            TranslationStringResource(
+                ref = TranslationRef(
+                    origin = ":app:/strings.xml",
+                    key = "home_title",
+                ),
+                fallback = "Home",
+            )
+    }
+}
+```
+
+Generated resources hide `origin` for normal usage, but the low-level identity is still `TranslationRef(origin, key)`.
+
+## Runtime model
+
+1. Create `TranslationToolsClient`
+2. Call `initialize()` during startup
+3. Restore persisted snapshots when configured
+4. Otherwise restore bundled generated snapshot when provided
+5. If nothing restored, do blocking refresh
+6. If restored, do background refresh by default
+7. Read translations through generated resources
+8. Call `refreshIfStale()` when returning to foreground
+
+Default refresh behavior:
+
+- blocking refresh on `initialize()` only when no persisted or bundled snapshot exists
+- background refresh after successful persisted or bundled restore by default
+- refresh on foreground only when older than 1 hour
+- no background timer
+- no WebSocket/live sync
 
 ## Recommended setup
 
@@ -83,6 +197,7 @@ import io.ktor.client.HttpClient
 import io.mvdm.translationtools.client.JvmTranslationSnapshotStores
 import io.mvdm.translationtools.client.TranslationTools
 import io.mvdm.translationtools.client.TranslationToolsClientOptions
+import io.mvdm.translationtools.client.resources.ResBundledSnapshot
 
 val httpClient = HttpClient()
 
@@ -97,134 +212,38 @@ val client = TranslationTools.createClient(
 )
 ```
 
-You provide:
-
-- project API key
-- Ktor `HttpClient`
-- optional persisted snapshot store
-- optional current locale provider
-- optional bundled startup snapshot
-
-## Startup and refresh
-
-Call `initialize()` once during startup:
-
-```kotlin
-client.initialize()
-```
-
-Call `refreshIfStale()` when the app returns to foreground:
-
-```kotlin
-client.refreshIfStale()
-```
-
-Guidance:
-
-- prefer one shared client instance per app/runtime
-- initialize before first real UI read if possible
-- do not call `refresh()` on every screen
-- set `backgroundRefreshEnabled = false` to opt out of startup background refresh
-
-## Persisted cache
-
-JVM:
-
-```kotlin
-val snapshotStore = JvmTranslationSnapshotStores.default()
-```
-
-Android:
-
-```kotlin
-val snapshotStore = AndroidTranslationSnapshotStores.fromContext(context)
-```
-
-Custom path:
-
-```kotlin
-import okio.FileSystem
-import io.mvdm.translationtools.client.TranslationSnapshotStores
-
-val snapshotStore = TranslationSnapshotStores.file(
-    "/some/path/translations.json",
-    FileSystem.SYSTEM,
-)
-```
-
-Persistence behavior:
-
-- store contains project metadata, locale snapshots, refresh timestamp
-- corrupt persisted JSON is treated as cache miss and deleted
-- `NoOpTranslationSnapshotStore` keeps runtime fully in-memory
-
 ## Reading translations
 
-Cache-only read:
-
-```kotlin
-val title = client.getCached("home.title") ?: "Home"
-```
-
-Fetch on miss:
-
-```kotlin
-val title = client.get("home.title", defaultValue = "Home")
-```
-
-Observe updates:
-
-```kotlin
-client.observe("home.title")
-```
-
-Read behavior:
-
-- `getCached(...)` = cache only
-- `get(...)` = cache first, then single-item fetch on miss
-
-Typed resource read:
-
-```kotlin
-import io.mvdm.translationtools.client.TranslationStringResource
-
-val homeTitle = TranslationStringResource(
-    key = "home.title",
-    fallback = "Home",
-)
-
-val title = client.getCached(homeTitle)
-```
-
-Typed resource behavior:
-
-- `getCached(resource)` = cached value, else resource fallback, else resource key
-- `get(resource)` = cache first, then single-item fetch on miss, using resource fallback as default value
-- `observe(resource)` = reactive read with the same fallback chain
-
-Generated resources:
+Use generated resources:
 
 ```kotlin
 import io.mvdm.translationtools.client.resources.Res
 
-val title = client.getCached(Res.string.home_title)
+val cachedTitle = client.getCached(Res.string.home_title)
+val title = client.get(Res.string.home_title)
+val updates = client.observe(Res.string.home_title)
 ```
 
-## Compose module
-
-Additional artifact:
+Low-level access is still available for advanced scenarios:
 
 ```kotlin
-dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:0.6.0")
-}
+import io.mvdm.translationtools.client.TranslationRef
+
+val ref = TranslationRef(origin = ":app:/strings.xml", key = "home_title")
+val title = client.get(ref)
 ```
 
-Compose usage:
+Resource behavior:
+
+- `getCached(resource)` = cached value, else resource fallback, else resource key
+- `get(resource)` = cache first, then single-item fetch on miss when the resource is remotely managed
+- `observe(resource)` = reactive read with the same fallback chain
+- `managedRemotely = false` resources stay local-only and never trigger remote fetches
+
+## Compose usage
 
 ```kotlin
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.material3.Text
 import io.mvdm.translationtools.client.compose.LocalTranslationToolsClient
 import io.mvdm.translationtools.client.compose.LocalTranslationToolsLocale
 import io.mvdm.translationtools.client.compose.stringResource
@@ -238,126 +257,38 @@ CompositionLocalProvider(
 }
 ```
 
-Full screen example:
-
-```kotlin
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import io.mvdm.translationtools.client.TranslationToolsClient
-import io.mvdm.translationtools.client.compose.LocalTranslationToolsClient
-import io.mvdm.translationtools.client.compose.LocalTranslationToolsLocale
-import io.mvdm.translationtools.client.compose.stringResource
-import io.mvdm.translationtools.client.resources.Res
-
-@Composable
-fun HomeScreen(
-    client: TranslationToolsClient,
-    locale: String = "en",
-) {
-    CompositionLocalProvider(
-        LocalTranslationToolsClient provides client,
-        LocalTranslationToolsLocale provides locale,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-        ) {
-            Text(
-                text = stringResource(Res.string.home_title),
-                style = MaterialTheme.typography.headlineMedium,
-            )
-
-            Text(
-                text = stringResource(Res.string.checkout_title),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
-    }
-}
-```
-
 Compose behavior:
 
 - `stringResource(...)` reads from the typed runtime API
 - explicit locale wins over `LocalTranslationToolsLocale`
 - if neither is set, locale resolution falls back to the client runtime rules
 
-## Import, pull, and code generation
+## Migration from older versions
 
-Add `translationtools.yaml` at the repo root:
+Main migration:
 
-```yaml
-apiKey: your-project-api-key
-locales:
-  - en
-generated:
-  packageName: io.mvdm.translationtools.client.resources
-  objectName: Res
-androidResources:
-  resourceDirectories:
-    - src/androidMain/res
-  keyOverrides:
-    action_save: action.save
+- move from key-only calls to generated resources or `TranslationRef`
+
+Typical migration:
+
+```kotlin
+// old
+client.getCached("home.title")
+
+// new
+client.getCached(Res.string.home_title)
 ```
 
-Optional API key sources, highest priority first:
+Android migration is usually mechanical:
 
-1. `-Ptranslationtools.apiKey=...`
-2. `TRANSLATIONTOOLS_API_KEY`
-3. `apiKey` in `translationtools.yaml`
+- replace runtime-backed `R.string.*` references with `Res.string.*`
 
-Notes:
+Other important changes:
 
-- base URL is fixed to `https://translations.mvdm.io`
-- `translationtools.yaml` should include an `apiKey` entry, even if you override it locally
-
-Init command:
-
-```bash
-./gradlew.bat initTranslationTools
-```
-
-Migrate command:
-
-```bash
-./gradlew.bat migrateTranslations
-```
-
-Sync command:
-
-```bash
-./gradlew.bat pullTranslations
-```
-
-Generation command:
-
-```bash
-./gradlew.bat generateTranslationResources
-```
-
-Workflow:
-
-- `initTranslationTools` creates a starter `translationtools.yaml`
-- `pullTranslations` refreshes root `snapshot.json` and regenerates Kotlin resources
-- `migrateTranslations` requires `translationtools.yaml`, imports full Android locale/value state, refreshes root `snapshot.json`, and regenerates Kotlin resources
-- commit `snapshot.json`
-- do not commit `build/generated/...`
-- normal `build` and `test` regenerate Kotlin from the local snapshot only
-- generated-source consumers like Android sources jars depend on `generateTranslationResources`
-- if the snapshot is missing, generation fails and tells you to run `pullTranslations` or `migrateTranslations`
-
-Generated output includes:
-
-- `Res.kt` for typed translation keys/fallbacks
-- `ResBundledSnapshot.kt` for first-launch bundled bootstrap data
+- `TranslationStringResource` now carries `TranslationRef`
+- `TranslationItem` now carries `TranslationRef`
+- XML files are the normal source for code generation
+- `snapshot.json` is no longer the normal developer-facing artifact
 
 ## Locale selection
 
@@ -368,7 +299,7 @@ Selection order:
 3. project default locale
 4. fallback `en`
 
-If `preferredLocales` is set, snapshot bootstrap uses that list.
+If `preferredLocales` is set, startup refresh uses that list.
 
 ## Android example
 
@@ -389,6 +320,7 @@ class App : Application(), DefaultLifecycleObserver {
                     resources.configuration.locales[0].toLanguageTag()
                 },
                 snapshotStore = AndroidTranslationSnapshotStores.fromContext(this),
+                bundledSnapshot = ResBundledSnapshot.value,
             ),
         )
 
@@ -406,6 +338,13 @@ class App : Application(), DefaultLifecycleObserver {
     }
 }
 ```
+
+## Phase 1 limits
+
+- formatted strings are treated as raw strings
+- `<plurals>` are warned and skipped
+- `<string-array>` is warned and skipped
+- unknown remote origins are ignored with warnings during pull
 
 ## Error model
 
@@ -436,6 +375,7 @@ catch (exception: TranslationToolsNetworkException) {
 - base URL is fixed to `https://translations.mvdm.io`
 - auth uses raw `Authorization` header
 - locale requests send `Accept-Encoding: gzip`
+- single-item fetches identify translations by `origin + key`
 - avoid hardcoding production API keys directly in source when possible
 
 ## OpenCode

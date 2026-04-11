@@ -1,19 +1,30 @@
 package io.mvdm.translationtools.gradle
 
-import kotlinx.serialization.json.Json
+import java.io.File
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
 abstract class GenerateTranslationResourcesTask : DefaultTask()
 {
-   @get:InputFile
-   abstract val snapshotFile: RegularFileProperty
+   @get:InputFiles
+   abstract val resourceFiles: ConfigurableFileCollection
+
+   @get:Input
+   abstract val defaultLocale: Property<String>
+
+   @get:Input
+   abstract val keyOverrides: MapProperty<String, String>
+
+   @get:Input
+   abstract val projectPathInput: Property<String>
 
    @get:Input
    abstract val packageName: Property<String>
@@ -30,12 +41,16 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
    @TaskAction
    fun generate()
    {
-      val snapshot = snapshotFile.asFile.get()
-      if (!snapshot.exists())
-         throw GradleException("Translation snapshot not found at ${snapshot.path}. Run ./gradlew.bat pullTranslations first.")
+      val files = resourceFiles.files.filter { it.exists() }
+      if (files.isEmpty())
+         throw GradleException("No Android XML string resources found. Add XML files under src/androidMain/res/values*/ or configure androidResources.resourceDirectories.")
 
-      val parsed = Json { ignoreUnknownKeys = false }
-         .decodeFromString<TranslationSnapshotFile>(snapshot.readText())
+      val parser = AndroidStringResourceParser()
+      val resourceDirectories = files.mapNotNull(File::getParentFile).mapNotNull(File::getParentFile).distinct()
+      val parsed = parser.parse(resourceDirectories, defaultLocale.get(), keyOverrides.getOrElse(emptyMap()), projectPathInput.get())
+
+      parsed.warnings.forEach { logger.warn(it) }
+
       val rendered = renderTranslationResources(parsed, packageName.get(), objectName.get())
       val output = outputFile.asFile.get()
       output.parentFile.mkdirs()
