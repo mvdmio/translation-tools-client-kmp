@@ -1,14 +1,24 @@
 # translationtools-client-kmp
 
-Kotlin Multiplatform TranslationTools client with XML-first resource generation.
+`translationtools-client-kmp` is a Kotlin Multiplatform client for TranslationTools.
+
+It keeps Android `strings.xml` as the source of truth, generates typed `Res.string.*` accessors for shared code, bundles fallback translations into your app, and refreshes translations from TranslationTools at runtime.
+
+Use it when you want all of this at once:
+
+- keep editing normal Android XML string resources
+- use the same typed translation API from shared KMP code
+- ship local fallback strings with the app
+- fetch updated translations from TranslationTools without changing call sites
+
+Current scope:
+
+- supports Android XML `<string>` resources
+- generates `Res.string.*` and `ResBundledSnapshot`
+- supports Android, JVM, and iOS consumers through the KMP client
+- skips `<plurals>` and `<string-array>`
 
 ## Install
-
-Maven Central:
-
-```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/1.0.0/
-```
 
 Repository:
 
@@ -18,11 +28,19 @@ repositories {
 }
 ```
 
-Dependency:
+Runtime client:
 
 ```kotlin
 dependencies {
     implementation("io.mvdm.translationtools:translationtools-client-kmp:1.0.0")
+}
+```
+
+Optional Compose helpers:
+
+```kotlin
+dependencies {
+    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.0")
 }
 ```
 
@@ -31,6 +49,7 @@ Version catalog:
 ```toml
 [libraries]
 translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "1.0.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "1.0.0" }
 ```
 
 ```kotlin
@@ -39,40 +58,34 @@ dependencies {
 }
 ```
 
-Compose artifact:
+To generate `Res.string.*`, your module also needs the `io.mvdm.translationtools.plugin` Gradle plugin. That plugin reads Android XML and generates the typed resource API used by this client.
+
+## How It Works
+
+1. You keep strings in `src/androidMain/res/values*/**/*.xml`.
+2. The Gradle plugin generates Kotlin resources such as `Res.string.home_title`.
+3. The build also generates `ResBundledSnapshot`, a bundled fallback snapshot from your local XML.
+4. Your app creates `TranslationToolsClient` and calls `initialize()`.
+5. The client restores cached or bundled translations, then refreshes from TranslationTools.
+6. Your code reads translations through `Res.string.*`.
+
+## Quick Start
+
+### 1. Apply the plugin in the KMP module that owns your Android resources
 
 ```kotlin
-dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.0")
+plugins {
+    id("org.jetbrains.kotlin.multiplatform")
+    id("com.android.library")
+    id("io.mvdm.translationtools.plugin")
 }
 ```
 
-## What changed in 1.0.0
+The runtime dependency alone does not generate resources.
 
-- local Android XML is now the build-time source of truth
-- generated resources are origin-aware and backed by `TranslationRef`
-- runtime-backed usage goes through `Res.string.*`
-- raw key-only public APIs were removed
-- the library no longer uses committed `snapshot.json` as the normal generation input
+### 2. Keep your strings in Android XML
 
-## Targets
-
-- `android`
-- `jvm`
-- `iosX64`
-- `iosArm64`
-- `iosSimulatorArm64`
-
-## Developer workflow
-
-1. Edit Android XML under `src/androidMain/res/values*/**/*.xml`
-2. Use generated `Res.string.*` in Android and shared code
-3. Run `pushTranslations` to upload local XML to TranslationTools
-4. Run `pullTranslations` to merge remote updates into local XML
-
-## XML-first setup
-
-Keep your checked-in XML files under Android resource folders, for example:
+Example `src/androidMain/res/values/strings.xml`:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -82,15 +95,26 @@ Keep your checked-in XML files under Android resource folders, for example:
 </resources>
 ```
 
-Add `translationtools.yaml` at the repo root:
+Example `src/androidMain/res/values-nl/strings.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_title">Start</string>
+    <string name="checkout_title">Afrekenen</string>
+</resources>
+```
+
+### 3. Add `translationtools.yaml` at the project root
 
 ```yaml
 apiKey: your-project-api-key
 defaultLocale: en
 locales:
   - en
+  - nl
 generated:
-  packageName: io.mvdm.translationtools.client.resources
+  packageName: com.example.translations
   objectName: Res
 androidResources:
   resourceDirectories:
@@ -98,111 +122,46 @@ androidResources:
   keyOverrides: {}
 ```
 
-Optional API key sources, highest priority first:
+API key lookup order:
 
-1. `-Ptranslationtools.apiKey=...`
-2. `TRANSLATIONTOOLS_API_KEY`
+1. Gradle property `-Ptranslationtools.apiKey=...`
+2. Environment variable `TRANSLATIONTOOLS_API_KEY`
 3. `apiKey` in `translationtools.yaml`
 
-Notes:
-
-- `translationtools.yaml` is primarily for sync config and overrides
-- build-only generation can rely on defaults if your XML lives under `src/androidMain/res`
-- generated package defaults to `android.namespace + ".translations"` when not configured explicitly
-
-## Gradle tasks
-
-Init starter config:
-
-```bash
-./gradlew.bat initTranslationTools
-```
-
-Generate Kotlin sources from local XML:
+### 4. Generate the typed resources
 
 ```bash
 ./gradlew.bat generateTranslationResources
 ```
 
-Pull remote translations into local XML:
+This generates:
 
-```bash
-./gradlew.bat pullTranslations
-```
+- `Res.string.*` for typed string access
+- `ResBundledSnapshot` for bundled fallback data
 
-Push local XML to TranslationTools:
+The plugin also wires generation into Kotlin compilation, so normal builds regenerate resources automatically.
 
-```bash
-./gradlew.bat pushTranslations
-```
+### 5. Create the client
 
-Workflow notes:
-
-- `generateTranslationResources` reads local XML, not `snapshot.json`
-- `pullTranslations` updates local XML files and then regenerates Kotlin sources
-- unknown remote origins are ignored with warnings
-- new remote keys for known origins are added to the mapped local XML file
-- `pushTranslations` uploads local XML and does not auto-run `pullTranslations`
-- remote deletions require explicit prune mode
-- do not commit `build/generated/...`
-
-## Generated API
-
-The generated facade is `Res.string.*`.
-
-Example generated shape:
+Common shape:
 
 ```kotlin
-public object Res {
-    public object string {
-        public val home_title: TranslationStringResource =
-            TranslationStringResource(
-                ref = TranslationRef(
-                    origin = ":app:/strings.xml",
-                    key = "home_title",
-                ),
-                fallback = "Home",
-            )
-    }
-}
+import io.ktor.client.HttpClient
+import io.mvdm.translationtools.client.TranslationTools
+import io.mvdm.translationtools.client.TranslationToolsClientOptions
 ```
 
-Generated resources hide `origin` for normal usage, but the low-level identity is still `TranslationRef(origin, key)`.
-
-## Runtime model
-
-1. Create `TranslationToolsClient`
-2. Call `initialize()` during startup
-3. Restore persisted snapshots when configured
-4. Otherwise restore bundled generated snapshot when provided
-5. If nothing restored, do blocking refresh
-6. If restored, do background refresh by default
-7. Read translations through generated resources
-8. Call `refreshIfStale()` when returning to foreground
-
-Default refresh behavior:
-
-- blocking refresh on `initialize()` only when no persisted or bundled snapshot exists
-- background refresh after successful persisted or bundled restore by default
-- refresh on foreground only when older than 1 hour
-- no background timer
-- no WebSocket/live sync
-
-## Recommended setup
-
-Use the factory:
+JVM example:
 
 ```kotlin
+import com.example.translations.ResBundledSnapshot
 import io.ktor.client.HttpClient
 import io.mvdm.translationtools.client.JvmTranslationSnapshotStores
 import io.mvdm.translationtools.client.TranslationTools
 import io.mvdm.translationtools.client.TranslationToolsClientOptions
-import io.mvdm.translationtools.client.resources.ResBundledSnapshot
-
-val httpClient = HttpClient()
 
 val client = TranslationTools.createClient(
-    httpClient = httpClient,
+    httpClient = HttpClient(),
     options = TranslationToolsClientOptions(
         apiKey = "your-project-api-key",
         currentLocaleProvider = { "en" },
@@ -212,42 +171,77 @@ val client = TranslationTools.createClient(
 )
 ```
 
-## Reading translations
-
-Use generated resources:
+Android example:
 
 ```kotlin
-import io.mvdm.translationtools.client.resources.Res
+import android.content.Context
+import com.example.translations.ResBundledSnapshot
+import io.ktor.client.HttpClient
+import io.mvdm.translationtools.client.AndroidTranslationSnapshotStores
+import io.mvdm.translationtools.client.TranslationTools
+import io.mvdm.translationtools.client.TranslationToolsClientOptions
+
+fun createTranslationsClient(context: Context) = TranslationTools.createClient(
+    httpClient = HttpClient(),
+    options = TranslationToolsClientOptions(
+        apiKey = "your-project-api-key",
+        currentLocaleProvider = {
+            context.resources.configuration.locales[0].toLanguageTag()
+        },
+        snapshotStore = AndroidTranslationSnapshotStores.fromContext(context),
+        bundledSnapshot = ResBundledSnapshot.value,
+    ),
+)
+```
+
+### 6. Initialize once during app startup
+
+```kotlin
+suspend fun startTranslations() {
+    client.initialize()
+}
+```
+
+`initialize()` does this:
+
+- restore persisted snapshot when available
+- otherwise restore bundled snapshot from generated XML data
+- otherwise do a blocking remote refresh
+- after restore, optionally do a background refresh
+
+### 7. Read translations
+
+```kotlin
+import com.example.translations.Res
 
 val cachedTitle = client.getCached(Res.string.home_title)
 val title = client.get(Res.string.home_title)
-val updates = client.observe(Res.string.home_title)
+val titleUpdates = client.observe(Res.string.home_title)
 ```
 
-Low-level access is still available for advanced scenarios:
+Behavior:
 
-```kotlin
-import io.mvdm.translationtools.client.TranslationRef
+- `getCached(...)` returns cached value, otherwise XML fallback, otherwise the key
+- `get(...)` returns cached value first and fetches from TranslationTools on cache miss
+- `observe(...)` exposes a `Flow` that updates when translations change
 
-val ref = TranslationRef(origin = ":app:/strings.xml", key = "home_title")
-val title = client.get(ref)
-```
+Locale resolution order:
 
-Resource behavior:
+1. explicit `locale` argument
+2. `currentLocaleProvider`
+3. project default locale
+4. `en`
 
-- `getCached(resource)` = cached value, else resource fallback, else resource key
-- `get(resource)` = cache first, then single-item fetch on miss when the resource is remotely managed
-- `observe(resource)` = reactive read with the same fallback chain
-- `managedRemotely = false` resources stay local-only and never trigger remote fetches
+## Compose
 
-## Compose usage
+If you use Compose, add `translationtools-client-compose` and provide the client through composition locals.
 
 ```kotlin
 import androidx.compose.runtime.CompositionLocalProvider
+import com.example.translations.Res
 import io.mvdm.translationtools.client.compose.LocalTranslationToolsClient
 import io.mvdm.translationtools.client.compose.LocalTranslationToolsLocale
 import io.mvdm.translationtools.client.compose.stringResource
-import io.mvdm.translationtools.client.resources.Res
 
 CompositionLocalProvider(
     LocalTranslationToolsClient provides client,
@@ -257,133 +251,98 @@ CompositionLocalProvider(
 }
 ```
 
-Compose behavior:
+## Sync Your XML With TranslationTools
 
-- `stringResource(...)` reads from the typed runtime API
-- explicit locale wins over `LocalTranslationToolsLocale`
-- if neither is set, locale resolution falls back to the client runtime rules
+Available Gradle tasks:
 
-## Migration from older versions
+- `./gradlew.bat initTranslationTools`
+  Creates a starter `translationtools.yaml`.
+- `./gradlew.bat generateTranslationResources`
+  Generates `Res.string.*` and `ResBundledSnapshot` from local XML.
+- `./gradlew.bat pushTranslations`
+  Uploads local XML to TranslationTools.
+- `./gradlew.bat pullTranslations`
+  Downloads translations from TranslationTools, updates local XML, then regenerates Kotlin resources.
 
-Main migration:
+Normal workflow:
 
-- move from key-only calls to generated resources or `TranslationRef`
+1. Edit `src/androidMain/res/values*/**/*.xml`.
+2. Build or run `generateTranslationResources`.
+3. Use `Res.string.*` in shared or platform code.
+4. Run `pushTranslations` when local XML should become the remote state.
+5. Run `pullTranslations` when remote changes should be merged back into XML.
 
-Typical migration:
+## Migrate From Regular `strings.xml`
 
-```kotlin
-// old
-client.getCached("home.title")
+If your app already uses Android `strings.xml`, migration is mostly mechanical.
 
-// new
-client.getCached(Res.string.home_title)
-```
+### What you keep
 
-Android migration is usually mechanical:
+- your existing `src/androidMain/res/values*/strings.xml` files
+- your existing string names such as `home_title`
+- Android XML as the editable source of truth
 
-- replace runtime-backed `R.string.*` references with `Res.string.*`
+### What changes
 
-Other important changes:
+- generated resources become `Res.string.*`
+- runtime reads go through `TranslationToolsClient`
+- TranslationTools becomes the remote source for updates and sync
 
-- `TranslationStringResource` now carries `TranslationRef`
-- `TranslationItem` now carries `TranslationRef`
-- XML files are the normal source for code generation
-- `snapshot.json` is no longer the normal developer-facing artifact
+### Migration steps
 
-## Locale selection
+1. Keep your existing `strings.xml` files under `src/androidMain/res/values*/`.
+2. Apply `io.mvdm.translationtools.plugin` to the module that owns those files.
+3. Add `translationtools.yaml`.
+4. Run `./gradlew.bat generateTranslationResources`.
+5. Create and initialize `TranslationToolsClient`.
+6. Replace runtime-backed string reads with `Res.string.*`.
+7. Run `./gradlew.bat pushTranslations` once to upload your current XML to TranslationTools.
 
-Selection order:
-
-1. explicit locale argument
-2. `currentLocaleProvider`
-3. project default locale
-4. fallback `en`
-
-If `preferredLocales` is set, startup refresh uses that list.
-
-## Android example
-
-```kotlin
-class App : Application(), DefaultLifecycleObserver {
-    lateinit var translations: TranslationToolsClient
-
-    override fun onCreate() {
-        super<Application>.onCreate()
-
-        val httpClient = HttpClient()
-
-        translations = TranslationTools.createClient(
-            httpClient = httpClient,
-            options = TranslationToolsClientOptions(
-                apiKey = BuildConfig.TRANSLATIONTOOLS_API_KEY,
-                currentLocaleProvider = {
-                    resources.configuration.locales[0].toLanguageTag()
-                },
-                snapshotStore = AndroidTranslationSnapshotStores.fromContext(this),
-                bundledSnapshot = ResBundledSnapshot.value,
-            ),
-        )
-
-        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
-    }
-
-    suspend fun initializeTranslations() {
-        translations.initialize()
-    }
-
-    override fun onStart(owner: LifecycleOwner) {
-        owner.lifecycleScope.launch {
-            translations.refreshIfStale()
-        }
-    }
-}
-```
-
-## Phase 1 limits
-
-- formatted strings are treated as raw strings
-- `<plurals>` are warned and skipped
-- `<string-array>` is warned and skipped
-- unknown remote origins are ignored with warnings during pull
-
-## Error model
-
-Typed exceptions:
-
-- `TranslationToolsException`
-- `TranslationToolsValidationException`
-- `TranslationToolsHttpException`
-- `TranslationToolsSerializationException`
-- `TranslationToolsNetworkException`
-
-Example:
+Typical code migration:
 
 ```kotlin
-try {
-    client.initialize()
-}
-catch (exception: TranslationToolsHttpException) {
-    // auth / permission / remote error
-}
-catch (exception: TranslationToolsNetworkException) {
-    // offline / dns / timeout / transport issue
-}
+// before
+context.getString(R.string.home_title)
+
+// after
+client.get(Res.string.home_title)
 ```
 
-## Transport notes
+Compose migration:
 
-- base URL is fixed to `https://translations.mvdm.io`
-- auth uses raw `Authorization` header
-- locale requests send `Accept-Encoding: gzip`
-- single-item fetches identify translations by `origin + key`
-- avoid hardcoding production API keys directly in source when possible
+```kotlin
+// before
+androidx.compose.ui.res.stringResource(R.string.home_title)
 
-## OpenCode
+// after
+io.mvdm.translationtools.client.compose.stringResource(Res.string.home_title)
+```
 
-This repo includes `opencode.jsonc` for project-local OpenCode defaults.
+Shared code migration:
 
-- loads repo instructions from `AGENTS.md`
-- ignores noisy generated directories during file watching
-- adds project shortcuts for build, test, and verify workflows
+```kotlin
+// before
+"Home"
 
-Keep `opencode.jsonc` and `AGENTS.md` in sync when updating contributor guidance.
+// after
+client.get(Res.string.home_title)
+```
+
+### Migration notes
+
+- only XML `<string>` entries are generated
+- `<plurals>` and `<string-array>` are skipped and need separate handling
+- generated files live under `build/generated/...`; do not edit them by hand
+- moving a string to a different XML file changes its translation origin in TranslationTools
+
+## What You Need In Production
+
+For a complete production setup, make sure all of these are true:
+
+1. `translationtools-client-kmp` is in your dependencies.
+2. `io.mvdm.translationtools.plugin` is applied to the module with Android XML resources.
+3. `translationtools.yaml` exists in the project root.
+4. Your default locale XML exists in `src/androidMain/res/values/`.
+5. Your app creates one `TranslationToolsClient` and calls `initialize()` at startup.
+6. Your app reads translations through `Res.string.*`.
+7. You use `pushTranslations` and `pullTranslations` to sync local XML with TranslationTools.
