@@ -20,6 +20,12 @@ Current scope:
 
 ## Install
 
+Maven Central:
+
+```text
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/1.0.1/
+```
+
 Repository:
 
 ```kotlin
@@ -32,7 +38,7 @@ Runtime client:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:1.0.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:1.0.1")
 }
 ```
 
@@ -40,7 +46,7 @@ Optional Compose helpers:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.0")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.1")
 }
 ```
 
@@ -48,8 +54,8 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "1.0.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "1.0.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "1.0.1" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "1.0.1" }
 ```
 
 ```kotlin
@@ -235,6 +241,14 @@ Locale resolution order:
 ## Compose
 
 If you use Compose, add `translationtools-client-compose` and provide the client through composition locals.
+
+Compose artifact targets:
+
+- `android`
+- `jvm`
+- `iosX64`
+- `iosArm64`
+- `iosSimulatorArm64`
 
 ```kotlin
 import androidx.compose.runtime.CompositionLocalProvider

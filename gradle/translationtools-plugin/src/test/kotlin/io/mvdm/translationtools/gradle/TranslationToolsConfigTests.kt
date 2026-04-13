@@ -67,6 +67,7 @@ class TranslationToolsConfigTests
              - src/androidMain/res
            keyOverrides:
              action_save: action.save
+           prune: true
          """.trimIndent()
       )
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
@@ -74,6 +75,7 @@ class TranslationToolsConfigTests
 
       assertEquals(listOf("app/src/main/res", "src/androidMain/res"), resolved.config.androidResources.resourceDirectories)
       assertEquals(mapOf("action_save" to "action.save"), resolved.config.androidResources.keyOverrides)
+      assertEquals(true, resolved.config.androidResources.prune)
    }
 
    @Test

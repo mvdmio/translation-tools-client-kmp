@@ -14,19 +14,27 @@ version = rootProject.version
 kotlin {
    androidTarget {
       compilations.all {
-         kotlinOptions {
-            jvmTarget = "17"
+         compileTaskProvider.configure {
+            compilerOptions {
+               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
          }
       }
    }
 
    jvm {
       compilations.all {
-         kotlinOptions {
-            jvmTarget = "17"
+         compileTaskProvider.configure {
+            compilerOptions {
+               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
          }
       }
    }
+
+   iosX64()
+   iosArm64()
+   iosSimulatorArm64()
 
    sourceSets {
       commonMain.dependencies {
@@ -63,7 +71,6 @@ mavenPublishing {
    configure(
       KotlinMultiplatform(
          javadocJar = JavadocJar.Empty(),
-         androidVariantsToPublish = listOf("release"),
       )
    )
 

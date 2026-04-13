@@ -10,21 +10,25 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "1.0.0"
+version = "1.0.1"
 
 kotlin {
    androidTarget {
       compilations.all {
-         kotlinOptions {
-            jvmTarget = "17"
+         compileTaskProvider.configure {
+            compilerOptions {
+               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
          }
       }
    }
 
    jvm {
       compilations.all {
-         kotlinOptions {
-            jvmTarget = "17"
+         compileTaskProvider.configure {
+            compilerOptions {
+               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
          }
       }
    }
@@ -72,7 +76,6 @@ mavenPublishing {
    configure(
       KotlinMultiplatform(
          javadocJar = JavadocJar.Empty(),
-         androidVariantsToPublish = listOf("release"),
       )
    )
 

@@ -19,17 +19,17 @@
     "build": {
       "description": "Build the library",
       "agent": "build",
-      "template": "Build this repository with the Gradle wrapper appropriate for the current platform. Prefer `./gradlew.bat build` on Windows and `./gradlew build` elsewhere. Quote the important failures, fix them, and finish with the final result."
+      "template": "Build this repository with the Gradle wrapper appropriate for the current platform. This repo is a composite Gradle build: use `./gradlew.bat build` on Windows and `./gradlew build` elsewhere for the root build, use `:translationtools-client-compose` for the compose subproject, and use `./gradle/translationtools-plugin/gradlew.bat` on Windows or `sh ./gradle/translationtools-plugin/gradlew` on POSIX for the included plugin build. Never refer to the plugin build as `:translationtools-plugin` and do not invent `-p` reruns when the local plugin wrapper already exists. Quote the important failures, fix them, and finish with the final result."
     },
     "test": {
       "description": "Run automated tests",
       "agent": "build",
-      "template": "Run the test suite for this repository with the Gradle wrapper appropriate for the current platform. Prefer `./gradlew.bat allTests` on Windows and `./gradlew allTests` elsewhere. Quote failing tests or key passing results and fix issues before finishing."
+      "template": "Run the test suite for this repository with the Gradle wrapper appropriate for the current platform. This repo is a composite Gradle build: use `./gradlew.bat allTests` on Windows and `./gradlew allTests` elsewhere for root tests, use `./gradlew(.bat) :translationtools-client-compose:allTests` for the compose subproject, and use `./gradle/translationtools-plugin/gradlew.bat test` on Windows or `sh ./gradle/translationtools-plugin/gradlew test` on POSIX for the included plugin build. Never refer to the plugin build as `:translationtools-plugin` and do not invent `-p` reruns when the local plugin wrapper already exists. Quote failing tests or key passing results and fix issues before finishing."
     },
     "verify": {
       "description": "Run full verification",
       "agent": "build",
-      "template": "Verify this repository end to end. Run the Gradle wrapper appropriate for the current platform, using `build` as the default full verification command. Confirm README and version updates when the change affects the published library, then report the final status succinctly."
+      "template": "Verify this repository end to end. This repo is a composite Gradle build: use the root wrapper for normal repo verification, `:translationtools-client-compose` for the compose subproject, and `./gradle/translationtools-plugin/gradlew.bat` on Windows or `sh ./gradle/translationtools-plugin/gradlew` on POSIX for the included plugin build. Never refer to the plugin build as `:translationtools-plugin` and do not invent `-p` reruns when the local plugin wrapper already exists. Use `build` as the default full verification command. Confirm README and version updates when the change affects the published library, then report the final status succinctly."
     }
   }
 }

@@ -22,6 +22,7 @@ data class GeneratedConfig(
 data class AndroidResourcesConfig(
    val resourceDirectories: List<String>,
    val keyOverrides: Map<String, String>,
+   val prune: Boolean,
 )
 
 internal fun resolveConfig(project: Project): ResolvedTranslationToolsConfig
@@ -73,21 +74,23 @@ private fun parseConfig(file: File): TranslationToolsConfig
    val resourceDirectories = (androidResources?.get("resourceDirectories") as? List<*>)
       ?.map { it.toString() }
       ?: listOf("src/androidMain/res")
-   val keyOverrides = (androidResources?.get("keyOverrides") as? Map<*, *>)
-      ?.entries
-      ?.associate { (key, value) -> key.toString() to value.toString() }
-      ?: emptyMap()
+    val keyOverrides = (androidResources?.get("keyOverrides") as? Map<*, *>)
+       ?.entries
+       ?.associate { (key, value) -> key.toString() to value.toString() }
+       ?: emptyMap()
+    val prune = androidResources?.get("prune") as? Boolean ?: false
 
    return TranslationToolsConfig(
       apiKey = apiKey,
       defaultLocale = defaultLocale,
       locales = locales,
       generated = GeneratedConfig(packageName = packageName, objectName = objectName),
-      androidResources = AndroidResourcesConfig(
-         resourceDirectories = resourceDirectories,
-         keyOverrides = keyOverrides,
-      ),
-   )
+       androidResources = AndroidResourcesConfig(
+          resourceDirectories = resourceDirectories,
+          keyOverrides = keyOverrides,
+          prune = prune,
+       ),
+    )
 }
 
 internal fun renderDefaultConfig(): String

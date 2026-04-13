@@ -30,7 +30,10 @@ Write tests before implementing features. Tests should cover all new code.
 
 ## Repository map
 
-- Single-module Kotlin Multiplatform library. Root project publishes `io.mvdm.translationtools:translationtools-client-kmp`.
+- Composite Gradle build.
+- Root project publishes `io.mvdm.translationtools:translationtools-client-kmp`.
+- Root subproject `:translationtools-client-compose` publishes `io.mvdm.translationtools:translationtools-client-compose` and targets Android, JVM, and iOS.
+- Included build `gradle/translationtools-plugin` builds the local Gradle plugin. It is not a root project path. Do not address it as `:translationtools-plugin`.
 - Main source sets: `src/commonMain`, `src/androidMain`, `src/jvmMain`.
 - Test source sets: `src/commonTest`, `src/jvmTest`.
 - Public package namespace: `io.mvdm.translationtools.client`.
@@ -41,6 +44,9 @@ Write tests before implementing features. Tests should cover all new code.
 - Full verification: `./gradlew.bat build`.
 - Tests only: `./gradlew.bat allTests`.
 - Narrow JVM loop when needed: `./gradlew.bat jvmTest`.
+- Compose module from repo root: `./gradlew.bat :translationtools-client-compose:build` or `./gradlew.bat :translationtools-client-compose:allTests`.
+- Plugin included build: use its local delegating wrapper, `./gradle/translationtools-plugin/gradlew.bat build` on Windows or `sh ./gradle/translationtools-plugin/gradlew build` on POSIX. For tests: `./gradle/translationtools-plugin/gradlew.bat test` on Windows or `sh ./gradle/translationtools-plugin/gradlew test` on POSIX.
+- Do not use ad-hoc `-p` for normal repo commands. Do not guess project paths for the included plugin build.
 
 ## Docs and release hygiene
 
