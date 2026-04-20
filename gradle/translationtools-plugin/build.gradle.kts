@@ -1,7 +1,7 @@
 plugins {
    `java-gradle-plugin`
-   kotlin("jvm") version "1.9.25"
-   kotlin("plugin.serialization") version "1.9.25"
+   kotlin("jvm") version libs.versions.kotlin
+   kotlin("plugin.serialization") version libs.versions.kotlin
 }
 
 repositories {
@@ -11,17 +11,16 @@ repositories {
 
 dependencies {
    implementation(gradleApi())
-   implementation(kotlin("stdlib"))
-   implementation("io.ktor:ktor-client-cio:2.3.12")
-   implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
-   implementation("io.ktor:ktor-client-mock:2.3.12")
-   implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
-   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-   implementation("org.snakeyaml:snakeyaml-engine:2.9")
-   implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25")
+   implementation(libs.ktor.client.cio)
+   implementation(libs.ktor.client.content.negotiation)
+   implementation(libs.ktor.client.mock)
+   implementation(libs.ktor.serialization.kotlinx.json)
+   implementation(libs.kotlinx.serialization.json)
+   implementation(libs.snakeyaml.engine)
+   implementation(libs.kotlin.gradle.plugin)
 
    testImplementation(kotlin("test"))
-   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+   testImplementation(libs.kotlinx.coroutines.test)
    testImplementation(gradleTestKit())
 }
 

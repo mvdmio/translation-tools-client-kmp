@@ -66,6 +66,36 @@ dependencies {
 
 To generate `Res.string.*`, your module also needs the `io.mvdm.translationtools.plugin` Gradle plugin. That plugin reads Android XML and generates the typed resource API used by this client.
 
+### Gradle plugin setup (composite build)
+
+The plugin is not yet published to a repository. Include it as a composite build from your
+consumer project. Copy or clone the `gradle/translationtools-plugin` directory, then add it
+to your `settings.gradle.kts`:
+
+```kotlin
+pluginManagement {
+    includeBuild("path/to/translationtools-plugin")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+```
+
+Then apply it in your module:
+
+```kotlin
+plugins {
+    id("io.mvdm.translationtools.plugin")
+}
+```
+
+**Compatibility:** the plugin is compiled with Kotlin 2.1.20 and works with Gradle 8.x
+and 9.x. Consumer projects can use any Kotlin version from 1.9.25 through current 2.x
+releases.
+
 ## How It Works
 
 1. You keep strings in `src/androidMain/res/values*/**/*.xml`.
@@ -128,11 +158,43 @@ androidResources:
   keyOverrides: {}
 ```
 
-API key lookup order:
+API key lookup order (Gradle plugin):
 
 1. Gradle property `-Ptranslationtools.apiKey=...`
 2. Environment variable `TRANSLATIONTOOLS_API_KEY`
 3. `apiKey` in `translationtools.yaml`
+
+The runtime client also needs the API key to refresh translations at app startup. On
+Android, a common approach is to expose it via `BuildConfig`:
+
+```kotlin
+// androidApp/build.gradle.kts
+buildTypes {
+    debug {
+        buildConfigField("String", "TRANSLATION_TOOLS_API_KEY",
+            "\"${localProperties.getProperty("TRANSLATIONTOOLS_API_KEY") ?: System.getenv("TRANSLATIONTOOLS_API_KEY") ?: ""}\"")
+    }
+}
+```
+
+Then set the key in `local.properties` (not committed to version control):
+
+```properties
+TRANSLATIONTOOLS_API_KEY=your-project-api-key
+```
+
+Pass it when creating the client:
+
+```kotlin
+TranslationToolsClientOptions(
+    apiKey = BuildConfig.TRANSLATION_TOOLS_API_KEY,
+    backgroundRefreshEnabled = BuildConfig.TRANSLATION_TOOLS_API_KEY.isNotBlank(),
+    // ...
+)
+```
+
+Without a valid API key, `backgroundRefreshEnabled` should be `false` and the app will
+only use bundled fallback translations.
 
 ### 4. Generate the typed resources
 

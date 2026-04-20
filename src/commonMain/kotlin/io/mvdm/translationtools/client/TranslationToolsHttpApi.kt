@@ -77,7 +77,6 @@ public class TranslationToolsHttpApi(
    private fun io.ktor.client.request.HttpRequestBuilder.addCommonHeaders()
    {
       header(HttpHeaders.Authorization, apiKey)
-      header(HttpHeaders.AcceptEncoding, "gzip")
       accept(ContentType.Application.Json)
    }
 

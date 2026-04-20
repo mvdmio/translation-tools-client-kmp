@@ -150,15 +150,19 @@ internal fun normalizeAndroidTranslationLocale(locale: String): String
    return locale.trim().lowercase()
 }
 
-internal fun parseStringsFile(xml: String): ParsedAndroidStringsFile
-{
-   val documentBuilder = DocumentBuilderFactory.newInstance().apply {
+private val documentBuilderFactory: DocumentBuilderFactory by lazy {
+   DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = false
       isIgnoringComments = true
       setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
       setFeature("http://xml.org/sax/features/external-general-entities", false)
       setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-   }.newDocumentBuilder()
+   }
+}
+
+internal fun parseStringsFile(xml: String): ParsedAndroidStringsFile
+{
+   val documentBuilder = documentBuilderFactory.newDocumentBuilder()
    val document = documentBuilder.parse(InputSource(StringReader(xml)))
    val resources = document.documentElement ?: return ParsedAndroidStringsFile(emptyList(), emptyList())
    val imported = mutableListOf<ParsedAndroidResourceValue>()

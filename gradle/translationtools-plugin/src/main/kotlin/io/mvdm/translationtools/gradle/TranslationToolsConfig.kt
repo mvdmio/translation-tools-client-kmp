@@ -63,15 +63,27 @@ private fun parseConfig(file: File): TranslationToolsConfig
 
    val apiKey = loaded["apiKey"] as? String
    val defaultLocale = loaded["defaultLocale"] as? String
-   val locales = (loaded["locales"] as? List<*>)?.map { it.toString() } ?: emptyList()
+   val rawLocales = loaded["locales"]
+   if (rawLocales != null && rawLocales !is List<*>)
+      throw org.gradle.api.GradleException("'locales' in ${file.path} must be a YAML list, not ${rawLocales::class.simpleName}. Example:\nlocales:\n  - en\n  - nl")
+   val locales = (rawLocales as? List<*>)?.map { it.toString() } ?: emptyList()
    if (loaded.containsKey("snapshotFile"))
       throw org.gradle.api.GradleException("snapshotFile is no longer supported. Use the default project-root snapshot.json path.")
 
-   val generated = loaded["generated"] as? Map<*, *>
+   val rawGenerated = loaded["generated"]
+   if (rawGenerated != null && rawGenerated !is Map<*, *>)
+      throw org.gradle.api.GradleException("'generated' in ${file.path} must be a YAML map with packageName/objectName keys.")
+   val generated = rawGenerated as? Map<*, *>
    val packageName = generated?.get("packageName") as? String
    val objectName = generated?.get("objectName") as? String ?: "Res"
-   val androidResources = loaded["androidResources"] as? Map<*, *>
-   val resourceDirectories = (androidResources?.get("resourceDirectories") as? List<*>)
+   val rawAndroidResources = loaded["androidResources"]
+   if (rawAndroidResources != null && rawAndroidResources !is Map<*, *>)
+      throw org.gradle.api.GradleException("'androidResources' in ${file.path} must be a YAML map.")
+   val androidResources = rawAndroidResources as? Map<*, *>
+   val rawResourceDirectories = androidResources?.get("resourceDirectories")
+   if (rawResourceDirectories != null && rawResourceDirectories !is List<*>)
+      throw org.gradle.api.GradleException("'androidResources.resourceDirectories' in ${file.path} must be a YAML list.")
+   val resourceDirectories = (rawResourceDirectories as? List<*>)
       ?.map { it.toString() }
       ?: listOf("src/androidMain/res")
     val keyOverrides = (androidResources?.get("keyOverrides") as? Map<*, *>)

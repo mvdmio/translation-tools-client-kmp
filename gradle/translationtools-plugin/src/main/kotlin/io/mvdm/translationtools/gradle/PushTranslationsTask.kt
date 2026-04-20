@@ -8,6 +8,7 @@ import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 
@@ -28,7 +29,10 @@ abstract class PushTranslationsTask : DefaultTask()
    @get:Input
    abstract val prune: Property<Boolean>
 
+   @get:Internal
    internal var parser: AndroidStringResourceParser = AndroidStringResourceParser()
+
+   @get:Internal
    internal var httpClientFactory: () -> HttpClient = { createDefaultPushHttpClient() }
 
    @TaskAction

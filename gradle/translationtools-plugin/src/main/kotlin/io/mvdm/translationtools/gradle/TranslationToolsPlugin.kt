@@ -1,10 +1,10 @@
 package io.mvdm.translationtools.gradle
 
-import java.io.File
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 
 class TranslationToolsPlugin : Plugin<Project>
 {
@@ -52,10 +52,6 @@ class TranslationToolsPlugin : Plugin<Project>
                 dir.file("${generated.first.replace('.', '/')}/${generated.second}BundledSnapshot.kt")
              }
           )
-          task.outputs.upToDateWhen {
-             val output = task.outputFile.asFile.get()
-             output.exists() && task.bundledSnapshotOutputFile.asFile.get().exists() && task.resourceFiles.files.any(File::exists)
-          }
          }
 
       project.tasks.register("pullTranslations", PullTranslationsTask::class.java) { task ->
@@ -90,7 +86,7 @@ class TranslationToolsPlugin : Plugin<Project>
          kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(
             project.layout.buildDirectory.dir("generated/source/translationtools/commonMain/kotlin"),
          )
-         project.tasks.matching { it.name.startsWith("compile") && it.name.contains("Kotlin") }
+         project.tasks.withType(KotlinCompilationTask::class.java)
             .configureEach { task ->
                task.dependsOn(generateTask)
             }
