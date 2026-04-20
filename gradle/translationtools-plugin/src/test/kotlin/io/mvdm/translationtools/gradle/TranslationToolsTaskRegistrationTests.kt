@@ -12,7 +12,7 @@ class TranslationToolsTaskRegistrationTests
    fun tasks_should_include_init_pull_and_push_translationtools_tasks()
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
-      writeFunctionalBuildFiles(projectDir)
+      writeBuildFiles(projectDir)
       File(projectDir, "translationtools.yaml").writeText(
          """
          apiKey: test-key
@@ -32,40 +32,4 @@ class TranslationToolsTaskRegistrationTests
       assertTrue(result.output.contains("pullTranslations"))
       assertTrue(result.output.contains("pushTranslations"))
    }
-}
-
-private fun writeFunctionalBuildFiles(projectDir: File)
-{
-   File(projectDir, "settings.gradle.kts").writeText(
-      """
-      pluginManagement {
-         repositories {
-            google()
-            mavenCentral()
-            gradlePluginPortal()
-         }
-      }
-
-      dependencyResolutionManagement {
-         repositories {
-            google()
-            mavenCentral()
-         }
-      }
-      """.trimIndent(),
-   )
-
-   File(projectDir, "build.gradle.kts").writeText(
-      """
-      plugins {
-         id("org.jetbrains.kotlin.multiplatform") version "1.9.25"
-         id("io.mvdm.translationtools.plugin")
-      }
-
-      kotlin {
-         jvm()
-      }
-
-      """.trimIndent(),
-    )
 }

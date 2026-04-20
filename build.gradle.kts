@@ -1,9 +1,9 @@
 plugins {
-   id("com.android.library") version "8.5.2"
-   id("com.vanniktech.maven.publish") version "0.35.0"
+   alias(libs.plugins.android.library)
+   alias(libs.plugins.maven.publish)
    id("io.mvdm.translationtools.plugin")
-   kotlin("multiplatform") version "1.9.25"
-   kotlin("plugin.serialization") version "1.9.25"
+   alias(libs.plugins.kotlin.multiplatform)
+   alias(libs.plugins.kotlin.serialization)
 }
 
 import com.vanniktech.maven.publish.JavadocJar
@@ -14,22 +14,14 @@ version = "1.0.1"
 
 kotlin {
    androidTarget {
-      compilations.all {
-         compileTaskProvider.configure {
-            compilerOptions {
-               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            }
-         }
+      compilerOptions {
+         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
       }
    }
 
    jvm {
-      compilations.all {
-         compileTaskProvider.configure {
-            compilerOptions {
-               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            }
-         }
+      compilerOptions {
+         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
       }
    }
 
@@ -39,21 +31,21 @@ kotlin {
 
    sourceSets {
       commonMain.dependencies {
-         api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-         api("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
-         implementation("com.squareup.okio:okio:3.9.0")
-         implementation("io.ktor:ktor-client-core:2.3.12")
-         implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+         api(libs.kotlinx.coroutines.core)
+         api(libs.kotlinx.datetime)
+         implementation(libs.okio)
+         implementation(libs.ktor.client.core)
+         implementation(libs.kotlinx.serialization.json)
       }
 
       commonTest.dependencies {
          implementation(kotlin("test"))
-         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+         implementation(libs.kotlinx.coroutines.test)
       }
 
       jvmTest.dependencies {
-         implementation("io.ktor:ktor-client-mock:2.3.12")
-         implementation("com.squareup.okio:okio-fakefilesystem:3.9.0")
+         implementation(libs.ktor.client.mock)
+         implementation(libs.okio.fakefilesystem)
       }
    }
 }
@@ -121,4 +113,3 @@ mavenPublishing {
       }
    }
 }
-

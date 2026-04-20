@@ -1,8 +1,9 @@
 plugins {
-   id("com.android.library") version "8.5.2"
-   id("org.jetbrains.compose") version "1.7.3"
-   id("com.vanniktech.maven.publish") version "0.35.0"
-   kotlin("multiplatform") version "1.9.25"
+   alias(libs.plugins.android.library)
+   alias(libs.plugins.compose)
+   alias(libs.plugins.maven.publish)
+   alias(libs.plugins.kotlin.multiplatform)
+   alias(libs.plugins.kotlin.compose)
 }
 
 import com.vanniktech.maven.publish.JavadocJar
@@ -13,22 +14,14 @@ version = rootProject.version
 
 kotlin {
    androidTarget {
-      compilations.all {
-         compileTaskProvider.configure {
-            compilerOptions {
-               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            }
-         }
+      compilerOptions {
+         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
       }
    }
 
    jvm {
-      compilations.all {
-         compileTaskProvider.configure {
-            compilerOptions {
-               jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            }
-         }
+      compilerOptions {
+         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
       }
    }
 
@@ -44,11 +37,11 @@ kotlin {
 
       commonTest.dependencies {
          implementation(kotlin("test"))
-         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+         implementation(libs.kotlinx.coroutines.test)
       }
 
       jvmTest.dependencies {
-         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+         implementation(libs.kotlinx.coroutines.test)
       }
    }
 }

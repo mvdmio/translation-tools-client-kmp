@@ -15,29 +15,7 @@ class TranslationToolsPluginFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
-       File(projectDir, "translationtools.yaml").writeText(
-            """
-            apiKey: test-key
-            defaultLocale: en
-            locales:
-              - en
-            generated:
-              packageName: com.example.translations
-              objectName: Res
-            androidResources:
-              resourceDirectories:
-                - src/androidMain/res
-            """.trimIndent()
-        )
-       File(projectDir, "src/androidMain/res/values").mkdirs()
-       File(projectDir, "src/androidMain/res/values/strings.xml").writeText(
-           """
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-             <string name="home_title">Home</string>
-          </resources>
-          """.trimIndent()
-       )
+      writeStandardTestFixtures(projectDir)
 
       val result = GradleRunner.create()
          .withProjectDir(projectDir)
@@ -86,29 +64,7 @@ class TranslationToolsPluginFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-functional").toFile()
       writeBuildFiles(projectDir)
-       File(projectDir, "translationtools.yaml").writeText(
-            """
-            apiKey: test-key
-            defaultLocale: en
-            locales:
-              - en
-            generated:
-              packageName: com.example.translations
-              objectName: Res
-            androidResources:
-              resourceDirectories:
-                - src/androidMain/res
-            """.trimIndent()
-        )
-       File(projectDir, "src/androidMain/res/values").mkdirs()
-       File(projectDir, "src/androidMain/res/values/strings.xml").writeText(
-           """
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-             <string name="home_title">Home</string>
-          </resources>
-           """.trimIndent()
-       )
+      writeStandardTestFixtures(projectDir)
 
       val result = GradleRunner.create()
          .withProjectDir(projectDir)
@@ -135,40 +91,26 @@ class TranslationToolsPluginFunctionalTests
       assertEquals(TaskOutcome.SUCCESS, result.task(":initTranslationTools")?.outcome)
       assertTrue(File(projectDir, "translationtools.yaml").exists())
    }
-}
 
-private fun writeBuildFiles(projectDir: File)
-{
-   File(projectDir, "settings.gradle.kts").writeText(
-      """
-      pluginManagement {
-         repositories {
-            google()
-            mavenCentral()
-            gradlePluginPortal()
-         }
-      }
+   @Test
+   fun generateTranslationResources_should_work_with_kotlin_2()
+   {
+      val projectDir = createTempDirectory("translationtools-functional-k2").toFile()
+      writeBuildFiles(projectDir, kotlinVersion = "2.1.20")
+      writeStandardTestFixtures(projectDir)
 
-      dependencyResolutionManagement {
-         repositories {
-            google()
-            mavenCentral()
-         }
-      }
-      """.trimIndent()
-   )
+      val result = GradleRunner.create()
+         .withProjectDir(projectDir)
+         .withPluginClasspath()
+         .withArguments("generateTranslationResources")
+         .build()
 
-   File(projectDir, "build.gradle.kts").writeText(
-      """
-      plugins {
-         id("org.jetbrains.kotlin.multiplatform") version "1.9.25"
-         id("io.mvdm.translationtools.plugin")
-      }
-
-      kotlin {
-         jvm()
-      }
-
-      """.trimIndent()
-    )
+      assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
+      val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt")
+      val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/ResBundledSnapshot.kt")
+      assertTrue(generated.exists())
+      assertTrue(bundled.exists())
+      assertTrue(generated.readText().contains("val home_title"))
+      assertTrue(generated.readText().contains("TranslationRef"))
+   }
 }

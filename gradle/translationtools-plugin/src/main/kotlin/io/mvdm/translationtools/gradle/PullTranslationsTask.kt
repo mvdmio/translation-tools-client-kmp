@@ -158,7 +158,6 @@ internal suspend fun fetchProjectMetadata(client: HttpClient, apiKey: String): P
    return executePullRequest("project metadata") {
       val body = client.get("$BASE_URL/api/v1/translations/project") {
          header(HttpHeaders.Authorization, apiKey)
-         header(HttpHeaders.AcceptEncoding, "gzip")
       }.requireSuccessBodyText()
 
       pullJson.decodeFromString(ProjectMetadataResponse.serializer(), body)
@@ -174,7 +173,6 @@ private suspend fun fetchLocaleTranslations(
    return executePullRequest("locale '$locale'") {
       val body = client.get("$BASE_URL/api/v1/translations/$locale") {
          header(HttpHeaders.Authorization, apiKey)
-         header(HttpHeaders.AcceptEncoding, "gzip")
       }.requireSuccessBodyText()
 
       pullJson.decodeFromString(ListSerializer(TranslationItemResponse.serializer()), body)
