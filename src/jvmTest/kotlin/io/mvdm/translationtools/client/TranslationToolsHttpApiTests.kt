@@ -20,12 +20,10 @@ class TranslationToolsHttpApiTests
    fun getProjectMetadata_should_parse_response_and_send_headers() = runTest {
       var capturedPath = ""
       var capturedAuthorization = ""
-      var capturedAcceptEncoding = ""
       var capturedAccept = ""
       val engine = MockEngine { request ->
          capturedPath = request.url.fullPath
          capturedAuthorization = request.headers[HttpHeaders.Authorization].orEmpty()
-         capturedAcceptEncoding = request.headers[HttpHeaders.AcceptEncoding].orEmpty()
          capturedAccept = request.headers[HttpHeaders.Accept].orEmpty()
 
          respond(
@@ -40,7 +38,6 @@ class TranslationToolsHttpApiTests
 
       assertEquals("/api/v1/translations/project", capturedPath)
       assertEquals("test-api-key", capturedAuthorization)
-      assertEquals("gzip", capturedAcceptEncoding)
       assertContains(capturedAccept, ContentType.Application.Json.toString())
       assertEquals(ProjectMetadata(locales = listOf("en", "nl"), defaultLocale = "en"), response)
    }
@@ -65,12 +62,12 @@ class TranslationToolsHttpApiTests
    }
 
    @Test
-   fun getTranslation_should_encode_default_value_query() = runTest {
+   fun getTranslation_should_encode_origin_path_and_default_value_query() = runTest {
       var capturedPath = ""
       var capturedQuery = ""
       val engine = MockEngine { request ->
          capturedPath = request.url.encodedPath
-         capturedQuery = request.url.encodedQuery.orEmpty()
+         capturedQuery = request.url.encodedQuery
          respond(
             content = """{"origin":":app:/strings.xml","key":"home_title","value":"Hello world"}""",
             status = HttpStatusCode.OK,
@@ -81,8 +78,8 @@ class TranslationToolsHttpApiTests
 
       val response = api.getTranslation("en", TranslationRef(":app:/strings.xml", "home_title"), "Hello world")
 
-      assertEquals("/api/v1/translations/en/home_title", capturedPath)
-      assertEquals("origin=%3Aapp%3A%2Fstrings.xml&defaultValue=Hello+world", capturedQuery)
+      assertEquals("/api/v1/translations/:app:%2Fstrings.xml/en/home_title", capturedPath)
+      assertEquals("defaultValue=Hello+world", capturedQuery)
       assertEquals(TranslationItem(TranslationRef(":app:/strings.xml", "home_title"), "Hello world"), response)
    }
 

@@ -11,6 +11,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.path
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.SerialName
@@ -49,29 +50,28 @@ public class TranslationToolsHttpApi(
             addCommonHeaders()
          }
 
-          val bodyText = response.requireSuccessBody()
-          json.decodeFromString<List<TranslationItemResponse>>(bodyText)
-             .map { TranslationItem(TranslationRef(it.origin, it.key), it.value) }
-       }
+         val bodyText = response.requireSuccessBody()
+         json.decodeFromString<List<TranslationItemResponse>>(bodyText)
+            .map { TranslationItem(TranslationRef(it.origin, it.key), it.value) }
+      }
    }
 
    override suspend fun getTranslation(locale: String, ref: TranslationRef, defaultValue: String?): TranslationItem
    {
       return execute {
-          val response = httpClient.get(BASE_URL) {
-             url {
-                path("api", "v1", "translations", locale, ref.key)
-                parameter("origin", ref.origin)
-                if (defaultValue != null)
-                   parameter("defaultValue", defaultValue)
-             }
+         val encodedOrigin = ref.origin.encodeURLPathPart()
+         val encodedLocale = locale.encodeURLPathPart()
+         val encodedKey = ref.key.encodeURLPathPart()
+         val response = httpClient.get("$BASE_URL/api/v1/translations/$encodedOrigin/$encodedLocale/$encodedKey") {
+            if (defaultValue != null)
+               parameter("defaultValue", defaultValue)
             addCommonHeaders()
          }
 
-          val bodyText = response.requireSuccessBody()
-          val body = json.decodeFromString<TranslationItemResponse>(bodyText)
-          TranslationItem(TranslationRef(body.origin, body.key), body.value)
-       }
+         val bodyText = response.requireSuccessBody()
+         val body = json.decodeFromString<TranslationItemResponse>(bodyText)
+         TranslationItem(TranslationRef(body.origin, body.key), body.value)
+      }
    }
 
    private fun io.ktor.client.request.HttpRequestBuilder.addCommonHeaders()

@@ -23,7 +23,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/1.0.1/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/1.0.2/
 ```
 
 Repository:
@@ -38,7 +38,7 @@ Runtime client:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:1.0.1")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:1.0.2")
 }
 ```
 
@@ -46,7 +46,7 @@ Optional Compose helpers:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.1")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:1.0.2")
 }
 ```
 
@@ -54,8 +54,8 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "1.0.1" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "1.0.1" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "1.0.2" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "1.0.2" }
 ```
 
 ```kotlin

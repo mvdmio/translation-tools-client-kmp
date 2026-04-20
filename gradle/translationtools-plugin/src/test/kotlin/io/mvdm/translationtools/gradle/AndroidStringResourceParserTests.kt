@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-class AndroidResourceMigrationTests
+class AndroidStringResourceParserTests
 {
    @Test
    fun parseStringsFile_should_parse_values_and_skip_unsupported_entries()
