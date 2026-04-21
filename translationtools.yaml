@@ -3,7 +3,6 @@ locales:
   - en
 generated:
   packageName: io.mvdm.translationtools.client.resources
-  objectName: Res
 androidResources:
   resourceDirectories:
     - src/androidMain/res

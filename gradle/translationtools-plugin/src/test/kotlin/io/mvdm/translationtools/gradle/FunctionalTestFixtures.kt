@@ -48,7 +48,6 @@ internal fun writeStandardTestFixtures(projectDir: File)
         - en
       generated:
         packageName: com.example.translations
-        objectName: Res
       androidResources:
         resourceDirectories:
           - src/androidMain/res

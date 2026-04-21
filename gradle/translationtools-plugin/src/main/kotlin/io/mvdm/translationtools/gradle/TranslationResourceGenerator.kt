@@ -33,10 +33,11 @@ internal fun sanitizeResourcePropertyName(rawKey: String): String
    return sanitized
 }
 
+internal const val GENERATED_OBJECT_NAME: String = "Translations"
+
 internal fun renderTranslationResources(
    project: AndroidTranslationProject,
    packageName: String,
-   objectName: String,
 ): String
 {
    val rawKeys = project.entries.map { it.resourceName }.distinct().sorted()
@@ -55,26 +56,24 @@ internal fun renderTranslationResources(
    builder.appendLine("import io.mvdm.translationtools.client.TranslationRef")
    builder.appendLine("import io.mvdm.translationtools.client.TranslationStringResource")
    builder.appendLine()
-   builder.appendLine("public object $objectName {")
-   builder.appendLine("   public object string {")
+   builder.appendLine("public object $GENERATED_OBJECT_NAME {")
 
    rawKeys.forEachIndexed { index, rawKey ->
       val entry = entriesByKey.getValue(rawKey)
       val fallback = entry.valuesByLocale[project.defaultLocale]
-      builder.appendLine("      public val ${resolvedNames.getValue(rawKey)}: TranslationStringResource =")
-      builder.appendLine("         TranslationStringResource(")
-      builder.appendLine("            ref = TranslationRef(")
-      builder.appendLine("               origin = ${entry.origin.asKotlinStringLiteral()},")
-      builder.appendLine("               key = ${entry.key.asKotlinStringLiteral()},")
-      builder.appendLine("            ),")
-      builder.appendLine("            fallback = ${fallback.asKotlinStringLiteral()},")
-      builder.appendLine("            managedRemotely = ${entry.managedRemotely},")
-      builder.appendLine("         )")
+      builder.appendLine("   public val ${resolvedNames.getValue(rawKey)}: TranslationStringResource =")
+      builder.appendLine("      TranslationStringResource(")
+      builder.appendLine("         ref = TranslationRef(")
+      builder.appendLine("            origin = ${entry.origin.asKotlinStringLiteral()},")
+      builder.appendLine("            key = ${entry.key.asKotlinStringLiteral()},")
+      builder.appendLine("         ),")
+      builder.appendLine("         fallback = ${fallback.asKotlinStringLiteral()},")
+      builder.appendLine("         managedRemotely = ${entry.managedRemotely},")
+      builder.appendLine("      )")
       if (index != rawKeys.lastIndex)
          builder.appendLine()
    }
 
-   builder.appendLine("   }")
    builder.appendLine("}")
    return builder.toString()
 }

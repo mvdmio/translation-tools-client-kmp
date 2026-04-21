@@ -41,15 +41,14 @@ class TranslationToolsPlugin : Plugin<Project>
              resolvedConfig.get().config.generated?.packageName
                 ?: inferDefaultGeneratedPackage(project)
           })
-          task.objectName.set(resolvedConfig.map { it.config.generated?.objectName ?: "Res" })
           task.outputFile.set(
-             outputDir.zip(task.packageName.zip(task.objectName) { packageName, objectName -> packageName to objectName }) { dir, generated ->
-                dir.file("${generated.first.replace('.', '/')}/${generated.second}.kt")
+             outputDir.zip(task.packageName) { dir, packageName ->
+                dir.file("${packageName.replace('.', '/')}/$GENERATED_OBJECT_NAME.kt")
              }
           )
           task.bundledSnapshotOutputFile.set(
-             outputDir.zip(task.packageName.zip(task.objectName) { packageName, objectName -> packageName to objectName }) { dir, generated ->
-                dir.file("${generated.first.replace('.', '/')}/${generated.second}BundledSnapshot.kt")
+             outputDir.zip(task.packageName) { dir, packageName ->
+                dir.file("${packageName.replace('.', '/')}/${GENERATED_OBJECT_NAME}BundledSnapshot.kt")
              }
           )
          }

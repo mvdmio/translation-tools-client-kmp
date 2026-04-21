@@ -37,7 +37,6 @@ class TranslationResourceGeneratorTests
       val result = renderTranslationResources(
          project = project,
          packageName = "com.example.translations",
-         objectName = "Res",
       )
 
       assertTrue(result.contains("home_title__"))
@@ -59,11 +58,30 @@ class TranslationResourceGeneratorTests
       val result = renderTranslationResources(
          project = project,
          packageName = "com.example.translations",
-         objectName = "Res",
       )
 
       assertTrue(result.indexOf("val a_key") < result.indexOf("val z_key"))
       assertTrue(result.contains("fallback = \"Aye\""))
       assertTrue(result.contains("fallback = \"Zee\""))
+   }
+
+   @Test
+   fun generate_should_emit_flat_translations_object_without_nested_string_wrapper()
+   {
+      val project = baseProject.copy(
+         locales = listOf("en"),
+         entries = listOf(
+            AndroidTranslationEntry(":app:/strings.xml", "home.title", "home.title", mapOf("en" to "Home"), "strings.xml", true),
+         ),
+      )
+
+      val result = renderTranslationResources(
+         project = project,
+         packageName = "com.example.translations",
+      )
+
+      assertTrue(result.contains("public object Translations {"), "expected top-level Translations object, got:\n$result")
+      assertTrue(!result.contains("object string"), "generated source should not contain nested 'string' object, got:\n$result")
+      assertTrue(!result.contains("object Res"), "generated source should no longer use 'Res' object, got:\n$result")
    }
 }

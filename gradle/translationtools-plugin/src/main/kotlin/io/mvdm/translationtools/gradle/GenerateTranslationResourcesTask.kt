@@ -32,9 +32,6 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
    @get:Input
    abstract val packageName: Property<String>
 
-   @get:Input
-   abstract val objectName: Property<String>
-
    @get:OutputFile
    abstract val outputFile: RegularFileProperty
 
@@ -54,13 +51,13 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
 
       parsed.warnings.forEach { logger.warn(it) }
 
-      val rendered = renderTranslationResources(parsed, packageName.get(), objectName.get())
+      val rendered = renderTranslationResources(parsed, packageName.get())
       val output = outputFile.asFile.get()
       output.parentFile.mkdirs()
       if (!output.exists() || output.readText() != rendered)
          output.writeText(rendered)
 
-      val bundledSnapshot = renderBundledSnapshot(parsed, packageName.get(), objectName.get())
+      val bundledSnapshot = renderBundledSnapshot(parsed, packageName.get())
       val bundledSnapshotOutput = bundledSnapshotOutputFile.asFile.get()
       bundledSnapshotOutput.parentFile.mkdirs()
       if (!bundledSnapshotOutput.exists() || bundledSnapshotOutput.readText() != bundledSnapshot)

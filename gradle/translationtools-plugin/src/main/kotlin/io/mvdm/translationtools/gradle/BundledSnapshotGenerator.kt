@@ -1,6 +1,6 @@
 package io.mvdm.translationtools.gradle
 
-internal fun renderBundledSnapshot(project: AndroidTranslationProject, packageName: String, objectName: String): String
+internal fun renderBundledSnapshot(project: AndroidTranslationProject, packageName: String): String
 {
    val builder = StringBuilder()
    builder.appendLine("package $packageName")
@@ -11,7 +11,7 @@ internal fun renderBundledSnapshot(project: AndroidTranslationProject, packageNa
     builder.appendLine("import io.mvdm.translationtools.client.TranslationRef")
    builder.appendLine("import io.mvdm.translationtools.client.TranslationSnapshot")
    builder.appendLine()
-   builder.appendLine("public object ${objectName}BundledSnapshot {")
+   builder.appendLine("public object ${GENERATED_OBJECT_NAME}BundledSnapshot {")
    builder.appendLine("   public val value: StoredTranslations = StoredTranslations(")
    builder.appendLine("      projectMetadata = ProjectMetadata(")
    builder.appendLine("         locales = listOf(${project.locales.joinToString(", ") { it.asKotlinStringLiteral() }}),")

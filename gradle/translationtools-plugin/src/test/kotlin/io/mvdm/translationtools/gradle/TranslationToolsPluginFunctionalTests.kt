@@ -24,11 +24,13 @@ class TranslationToolsPluginFunctionalTests
          .build()
 
        assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
-       val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt")
-       val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/ResBundledSnapshot.kt")
+       val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Translations.kt")
+       val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/TranslationsBundledSnapshot.kt")
         assertTrue(generated.exists())
         assertTrue(bundled.exists())
         assertTrue(generated.readText().contains("val home_title"))
+        assertTrue(generated.readText().contains("public object Translations {"))
+        assertTrue(!generated.readText().contains("object string"))
         assertTrue(generated.readText().contains("TranslationRef"))
     }
 
@@ -55,7 +57,7 @@ class TranslationToolsPluginFunctionalTests
       assertTrue(result.output.contains("BUILD FAILED"))
       assertTrue(result.output.contains("No Android XML string resources found"))
       assertTrue(
-         !File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt").exists()
+         !File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Translations.kt").exists()
       )
    }
 
@@ -106,8 +108,8 @@ class TranslationToolsPluginFunctionalTests
          .build()
 
       assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
-      val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Res.kt")
-      val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/ResBundledSnapshot.kt")
+      val generated = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/Translations.kt")
+      val bundled = File(projectDir, "build/generated/source/translationtools/commonMain/kotlin/com/example/translations/TranslationsBundledSnapshot.kt")
       assertTrue(generated.exists())
       assertTrue(bundled.exists())
       assertTrue(generated.readText().contains("val home_title"))

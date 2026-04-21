@@ -21,7 +21,6 @@ class TranslationToolsConfigTests
               - nl
             generated:
               packageName: com.example.translations
-              objectName: Res
            """.trimIndent()
       )
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
@@ -31,7 +30,6 @@ class TranslationToolsConfigTests
        assertEquals("en", resolved.config.defaultLocale)
        assertEquals(listOf("nl"), resolved.config.locales)
        assertEquals("com.example.translations", resolved.config.generated?.packageName)
-       assertEquals("Res", resolved.config.generated?.objectName)
    }
 
    @Test
@@ -107,4 +105,25 @@ class TranslationToolsConfigTests
        }
        assertTrue(exception.message!!.contains("snapshotFile is no longer supported"))
     }
+
+   @Test
+   fun resolveConfig_should_reject_object_name_override()
+   {
+      val projectDir = createTempDirectory("translationtools-config").toFile()
+      File(projectDir, "translationtools.yaml").writeText(
+         """
+         apiKey: yaml-key
+         generated:
+           packageName: com.example.translations
+           objectName: Res
+         """.trimIndent()
+      )
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+
+      val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+         resolveConfig(project)
+      }
+      assertTrue(exception.message!!.contains("generated.objectName"))
+      assertTrue(exception.message!!.contains("Translations"))
+   }
 }

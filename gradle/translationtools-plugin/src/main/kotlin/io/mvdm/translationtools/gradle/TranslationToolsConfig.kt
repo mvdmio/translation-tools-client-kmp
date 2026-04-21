@@ -16,7 +16,6 @@ data class TranslationToolsConfig(
 
 data class GeneratedConfig(
    val packageName: String?,
-   val objectName: String,
 )
 
 data class AndroidResourcesConfig(
@@ -72,10 +71,11 @@ private fun parseConfig(file: File): TranslationToolsConfig
 
    val rawGenerated = loaded["generated"]
    if (rawGenerated != null && rawGenerated !is Map<*, *>)
-      throw org.gradle.api.GradleException("'generated' in ${file.path} must be a YAML map with packageName/objectName keys.")
+      throw org.gradle.api.GradleException("'generated' in ${file.path} must be a YAML map with a 'packageName' key.")
    val generated = rawGenerated as? Map<*, *>
+   if (generated?.containsKey("objectName") == true)
+      throw org.gradle.api.GradleException("'generated.objectName' is no longer supported. The generated object is always named 'Translations'. Remove this key from ${file.path}.")
    val packageName = generated?.get("packageName") as? String
-   val objectName = generated?.get("objectName") as? String ?: "Res"
    val rawAndroidResources = loaded["androidResources"]
    if (rawAndroidResources != null && rawAndroidResources !is Map<*, *>)
       throw org.gradle.api.GradleException("'androidResources' in ${file.path} must be a YAML map.")
@@ -96,7 +96,7 @@ private fun parseConfig(file: File): TranslationToolsConfig
       apiKey = apiKey,
       defaultLocale = defaultLocale,
       locales = locales,
-      generated = GeneratedConfig(packageName = packageName, objectName = objectName),
+      generated = GeneratedConfig(packageName = packageName),
        androidResources = AndroidResourcesConfig(
           resourceDirectories = resourceDirectories,
           keyOverrides = keyOverrides,
@@ -114,7 +114,6 @@ internal fun renderDefaultConfig(): String
               - en
             generated:
               packageName: com.example.translations
-              objectName: Res
            androidResources:
              resourceDirectories:
               - src/androidMain/res
