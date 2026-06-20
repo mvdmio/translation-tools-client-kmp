@@ -62,6 +62,7 @@ class TranslationToolsPlugin : Plugin<Project>
            })
            task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
            task.resourceDirectories.set(resolvedConfig.map { it.config.androidResources.resourceDirectories })
+           task.appleResourceDirectories.set(resolvedConfig.map { it.config.appleResources?.resourceDirectories ?: emptyList() })
            task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
            task.configuredLocales.set(resolvedConfig.map { it.config.locales })
              task.finalizedBy(generateTask)
@@ -76,6 +77,7 @@ class TranslationToolsPlugin : Plugin<Project>
          })
          task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
          task.resourceDirectories.set(resolvedConfig.map { it.config.androidResources.resourceDirectories })
+         task.appleResourceDirectories.set(resolvedConfig.map { it.config.appleResources?.resourceDirectories ?: emptyList() })
          task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
          task.prune.set(project.providers.gradleProperty("translationtools.prune").map(String::toBoolean).orElse(false))
       }

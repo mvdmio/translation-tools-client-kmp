@@ -12,6 +12,7 @@ data class TranslationToolsConfig(
    val locales: List<String>,
    val generated: GeneratedConfig?,
    val androidResources: AndroidResourcesConfig,
+   val appleResources: AppleResourcesConfig?,
 )
 
 data class GeneratedConfig(
@@ -22,6 +23,10 @@ data class AndroidResourcesConfig(
    val resourceDirectories: List<String>,
    val keyOverrides: Map<String, String>,
    val prune: Boolean,
+)
+
+data class AppleResourcesConfig(
+   val resourceDirectories: List<String>,
 )
 
 internal fun resolveConfig(project: Project): ResolvedTranslationToolsConfig
@@ -92,6 +97,19 @@ private fun parseConfig(file: File): TranslationToolsConfig
        ?: emptyMap()
     val prune = androidResources?.get("prune") as? Boolean ?: false
 
+   val rawAppleResources = loaded["appleResources"]
+   if (rawAppleResources != null && rawAppleResources !is Map<*, *>)
+      throw org.gradle.api.GradleException("'appleResources' in ${file.path} must be a YAML map.")
+   val appleResources = rawAppleResources as? Map<*, *>
+   val rawAppleResourceDirectories = appleResources?.get("resourceDirectories")
+   if (rawAppleResourceDirectories != null && rawAppleResourceDirectories !is List<*>)
+      throw org.gradle.api.GradleException("'appleResources.resourceDirectories' in ${file.path} must be a YAML list.")
+   val appleResourcesConfig = appleResources?.let {
+      AppleResourcesConfig(
+         resourceDirectories = (rawAppleResourceDirectories as? List<*>)?.map { directory -> directory.toString() } ?: emptyList(),
+      )
+   }
+
    return TranslationToolsConfig(
       apiKey = apiKey,
       defaultLocale = defaultLocale,
@@ -102,6 +120,7 @@ private fun parseConfig(file: File): TranslationToolsConfig
           keyOverrides = keyOverrides,
           prune = prune,
        ),
+       appleResources = appleResourcesConfig,
     )
 }
 

@@ -12,6 +12,7 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import org.gradle.testfixtures.ProjectBuilder
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -156,6 +157,58 @@ class PullTranslationsTaskTests
       val rendered = target.readText()
       assertTrue(rendered.contains("home_title"))
       assertFalse(rendered.contains("checkout_title"))
+   }
+
+   @Test
+   fun pull_should_write_apple_strings_preserve_on_merge_and_create_missing_locale()
+   {
+      val projectDir = createTempDirectory("translationtools-pull-apple").toFile()
+      File(projectDir, "res/values").mkdirs()
+      File(projectDir, "res/values/strings.xml").writeText(
+         "<resources><string name=\"home_title\">Home</string></resources>"
+      )
+      File(projectDir, "ios/en.lproj").mkdirs()
+      File(projectDir, "ios/en.lproj/InfoPlist.strings").writeText(
+         "/* App permissions */\n\"NSCameraUsageDescription\" = \"Old camera\";\n"
+      )
+
+      val client = createHttpClient(
+         MockEngine { request ->
+            when (request.url.encodedPath) {
+               "/api/v1/translations/project" -> respondJson("""{"locales":["en","de"],"defaultLocale":"en"}""")
+               "/api/v1/translations/en" -> respondJson(
+                  """[{"origin":":/strings.xml","key":"home_title","value":"Home"},{"origin":":/InfoPlist.strings","key":"NSCameraUsageDescription","value":"New camera"}]"""
+               )
+               "/api/v1/translations/de" -> respondJson(
+                  """[{"origin":":/InfoPlist.strings","key":"NSCameraUsageDescription","value":"Kamera"}]"""
+               )
+               else -> error("Unexpected path: ${request.url.encodedPath}")
+            }
+         }
+      )
+
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val task = project.tasks.create("pullTranslations", PullTranslationsTask::class.java)
+      task.apiKey.set("test-key")
+      task.defaultLocale.set("en")
+      task.resourceDirectories.set(listOf("res"))
+      task.appleResourceDirectories.set(listOf("ios"))
+      task.keyOverrides.set(emptyMap())
+      task.configuredLocales.set(listOf("en", "de"))
+      task.httpClientFactory = { client }
+
+      task.pull()
+
+      val enContent = File(projectDir, "ios/en.lproj/InfoPlist.strings").readText()
+      assertTrue(enContent.contains("/* App permissions */"))
+      assertTrue(enContent.contains("\"NSCameraUsageDescription\" = \"New camera\";"))
+      assertFalse(enContent.contains("Old camera"))
+
+      val deFile = File(projectDir, "ios/de.lproj/InfoPlist.strings")
+      assertTrue(deFile.exists())
+      val deContent = deFile.readText()
+      assertTrue(deContent.contains("Managed by TranslationTools"))
+      assertTrue(deContent.contains("\"NSCameraUsageDescription\" = \"Kamera\";"))
    }
 
    @Test

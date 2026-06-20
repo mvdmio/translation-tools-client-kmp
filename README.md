@@ -17,13 +17,16 @@ Current scope:
 - generates `Translations.*` and `TranslationsBundledSnapshot`
 - supports Android, JVM, and iOS consumers through the KMP client
 - skips `<plurals>` and `<string-array>`
+- optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`) as a
+  second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
+  no generated `Translations.*` accessors and no runtime refresh (see [Apple `.strings` (iOS)](#apple-strings-ios))
 
 ## Install
 
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/2.0.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/2.1.0/
 ```
 
 Repository:
@@ -38,7 +41,7 @@ Runtime client:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:2.0.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:2.1.0")
 }
 ```
 
@@ -46,7 +49,7 @@ Optional Compose helpers:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:2.0.0")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:2.1.0")
 }
 ```
 
@@ -54,8 +57,8 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "2.0.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "2.0.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "2.1.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "2.1.0" }
 ```
 
 ```kotlin
@@ -155,7 +158,14 @@ androidResources:
   resourceDirectories:
     - src/androidMain/res
   keyOverrides: {}
+# Optional — only if you also sync Apple .strings files (see "Apple .strings (iOS)").
+# appleResources:
+#   resourceDirectories:
+#     - ../iosApp/iosApp
 ```
+
+`defaultLocale` and `locales` are shared across both platforms. The `appleResources` block
+is optional; omitting it leaves the build Android-only and unchanged.
 
 API key lookup order (Gradle plugin):
 
@@ -335,9 +345,11 @@ Available Gradle tasks:
 - `./gradlew.bat generateTranslationResources`
   Generates `Translations.*` and `TranslationsBundledSnapshot` from local XML.
 - `./gradlew.bat pushTranslations`
-  Uploads local XML to TranslationTools.
+  Uploads local XML — and, when `appleResources` is configured, Apple `.strings` — to TranslationTools.
 - `./gradlew.bat pullTranslations`
-  Downloads translations from TranslationTools, updates local XML, then regenerates Kotlin resources.
+  Downloads translations from TranslationTools, updates local XML (and Apple `.strings`), then regenerates Kotlin resources.
+
+`generateTranslationResources` stays Android-only; it never reads Apple `.strings`.
 
 Normal workflow:
 
@@ -346,6 +358,51 @@ Normal workflow:
 3. Use `Translations.*` in shared or platform code.
 4. Run `pushTranslations` when local XML should become the remote state.
 5. Run `pullTranslations` when remote changes should be merged back into XML.
+
+## Apple `.strings` (iOS)
+
+iOS apps ship localized copy outside Android XML — Apple `.strings` files such as
+`InfoPlist.strings` (app display name, permission usage descriptions) and
+`Localizable.strings`, living in `<locale>.lproj/` directories. You can manage these in
+TranslationTools as a **second source of truth** alongside Android XML.
+
+Point the plugin at the directories that *contain* your `.lproj/` folders (paths may resolve
+outside the Gradle module, e.g. an Xcode app target beside the shared module):
+
+```yaml
+appleResources:
+  resourceDirectories:
+    - ../iosApp/iosApp
+```
+
+Every `.strings` file inside the discovered `.lproj/` folders is then auto-discovered and
+included in `pushTranslations` / `pullTranslations`. There is no per-key opt-out.
+
+Behavior:
+
+- **Origins.** Each filename is its own origin (`:/InfoPlist.strings`, `:/Localizable.strings`),
+  parallel to `:/strings.xml`, so identical keys across platforms never collide.
+- **Locales.** `.lproj` names map to the shared lowercase-hyphen locale axis: `en.lproj → en`,
+  `pt-BR.lproj` (and legacy `pt_BR`) → `pt-br`, `Base.lproj → defaultLocale`. If both `Base.lproj`
+  and an explicit default-locale directory exist, the explicit one wins and a warning is emitted.
+  Write-back uses Apple's conventional casing (`pt-BR.lproj`).
+- **Codec.** Reads UTF-8 and UTF-16 (BOM detection); writes UTF-8 without a BOM. Handles standard
+  escapes (`\"`, `\\`, `\n`, `\t`, `\Uxxxx`). Unparseable lines are warned-and-skipped, never fatal.
+- **Pull is preserve-on-merge.** Existing keys are updated in place; new keys are appended;
+  comments, blank lines, and ordering are kept. A missing remote locale's `.lproj/<file>.strings`
+  is created (with a managed-by-TranslationTools header) plus a warning to add the region to your
+  Xcode project's `knownRegions` — the plugin does not edit `project.pbxproj`.
+
+**Sync-only, by design.** Apple `.strings` get **no** generated `Translations.*` accessors and are
+**not** part of `TranslationsBundledSnapshot`; the `.lproj/*.strings` files in the signed app
+bundle are themselves the iOS bundled fallback. There is no runtime refresh for these keys, because
+the OS (`InfoPlist.strings`) and native code (`NSLocalizedString`) read them from the read-only
+bundle — there is no delivery path for a runtime-fetched value. Making app-owned iOS UI text
+runtime-updatable (routing native reads through the KMP client) is a separate, larger initiative.
+See [`docs/adr/0001`](docs/adr/0001-ios-strings-sync-only.md) and
+[`docs/adr/0002`](docs/adr/0002-pull-creates-lproj-dirs-and-warns.md).
+
+`.xcstrings` (String Catalogs) are not supported.
 
 ## Migrate From Regular `strings.xml`
 

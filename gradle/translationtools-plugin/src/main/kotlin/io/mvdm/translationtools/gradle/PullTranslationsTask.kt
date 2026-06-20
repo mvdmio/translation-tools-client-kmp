@@ -37,6 +37,9 @@ abstract class PullTranslationsTask : DefaultTask()
    abstract val resourceDirectories: ListProperty<String>
 
    @get:Input
+   abstract val appleResourceDirectories: ListProperty<String>
+
+   @get:Input
    abstract val keyOverrides: MapProperty<String, String>
 
    @get:Input
@@ -57,6 +60,8 @@ abstract class PullTranslationsTask : DefaultTask()
       if (directories.isEmpty())
          throw GradleException("No Android resource directories found. Configure translationtools.yaml androidResources.resourceDirectories.")
 
+      val appleDirectories = appleResourceDirectories.getOrElse(emptyList()).map(project::file).filter(File::exists).distinct()
+
       runBlocking {
          val client = httpClientFactory()
          try {
@@ -71,7 +76,14 @@ abstract class PullTranslationsTask : DefaultTask()
             val locales = listOf(remote.project.defaultLocale) + remote.project.locales
             val effectiveLocales = locales.distinct().sorted()
 
+            val appleDiscovery = if (appleDirectories.isNotEmpty()) discoverAppleLocaleFiles(appleDirectories, resolvedDefaultLocale) else null
+            appleDiscovery?.warnings?.forEach { warning -> logger.warn(warning) }
+            val appleOrigins = appleDiscovery?.files.orEmpty().map { buildOrigin(project.path, it.relativeBaseFile) }.toSet()
+
             remote.items.groupBy { it.origin }.forEach { (origin, entries) ->
+               if (origin in appleOrigins)
+                  return@forEach
+
                val mapped = byOrigin[origin]
                if (mapped.isNullOrEmpty()) {
                   logger.warn("Ignored pulled origin '$origin' because no local XML file maps to it.")
@@ -110,6 +122,10 @@ abstract class PullTranslationsTask : DefaultTask()
                   )
                }
             }
+
+            if (appleDiscovery != null) {
+               writeAppleTranslations(appleDiscovery, appleDirectories, remote, appleOrigins, effectiveLocales, project.path)
+            }
          }
          catch (exception: PullTranslationsException) {
             throw GradleException(exception.message.orEmpty(), exception)
@@ -121,6 +137,44 @@ abstract class PullTranslationsTask : DefaultTask()
 
       logger.lifecycle("Loaded config from translationtools.yaml")
       logger.lifecycle("Pulled translations into Android XML resources.")
+   }
+
+   private fun writeAppleTranslations(
+      appleDiscovery: AppleResourceDiscovery,
+      appleDirectories: List<File>,
+      remote: PulledTranslations,
+      appleOrigins: Set<String>,
+      effectiveLocales: List<String>,
+      projectPath: String,
+   )
+   {
+      val variantByOriginLocale = appleDiscovery.files.associateBy { buildOrigin(projectPath, it.relativeBaseFile) to it.locale }
+      val filenameByOrigin = appleDiscovery.files.associate { buildOrigin(projectPath, it.relativeBaseFile) to it.relativeBaseFile }
+      val rootByFilename = appleDiscovery.files.groupBy { it.relativeBaseFile }.mapValues { it.value.first().resourceDirectory }
+      val defaultRoot = appleDirectories.first()
+
+      remote.items.filter { it.origin in appleOrigins }.groupBy { it.origin }.forEach { (origin, entries) ->
+         val filename = filenameByOrigin[origin] ?: origin.substringAfterLast("/")
+         val root = rootByFilename[filename] ?: defaultRoot
+
+         effectiveLocales.forEach { locale ->
+            val updates = entries
+               .filter { it.valuesByLocale.containsKey(locale) }
+               .associate { it.key to it.valuesByLocale[locale] }
+            val hasContent = updates.values.any { it != null }
+
+            val existingVariant = variantByOriginLocale[origin to locale]
+            if (existingVariant == null && !hasContent)
+               return@forEach
+
+            val targetFile = existingVariant?.file ?: File(root, "${toLprojDirectory(locale)}/$filename")
+            val created = writeAppleStringsFile(targetFile, updates)
+            if (created)
+               logger.warn("Created '${targetFile.path}' for locale '$locale'. Add '$locale' (or its region) to your Xcode project's knownRegions to bundle it.")
+         }
+      }
+
+      logger.lifecycle("Pulled translations into Apple .strings resources.")
    }
 }
 

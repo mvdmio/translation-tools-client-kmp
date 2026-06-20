@@ -77,6 +77,67 @@ class TranslationToolsConfigTests
    }
 
    @Test
+   fun resolveConfig_should_read_apple_resource_directories()
+   {
+      val projectDir = createTempDirectory("translationtools-config").toFile()
+      File(projectDir, "translationtools.yaml").writeText(
+         """
+         apiKey: yaml-key
+         generated:
+           packageName: com.example.translations
+         androidResources:
+           resourceDirectories:
+             - src/androidMain/res
+         appleResources:
+           resourceDirectories:
+             - ../iosApp/iosApp
+         """.trimIndent()
+      )
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val resolved = resolveConfig(project)
+
+      assertEquals(listOf("../iosApp/iosApp"), resolved.config.appleResources?.resourceDirectories)
+   }
+
+   @Test
+   fun resolveConfig_should_treat_missing_apple_resources_as_a_clean_noop()
+   {
+      val projectDir = createTempDirectory("translationtools-config").toFile()
+      File(projectDir, "translationtools.yaml").writeText(
+         """
+         apiKey: yaml-key
+         generated:
+           packageName: com.example.translations
+         """.trimIndent()
+      )
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val resolved = resolveConfig(project)
+
+      assertEquals(null, resolved.config.appleResources)
+   }
+
+   @Test
+   fun resolveConfig_should_reject_malformed_apple_resources_shape()
+   {
+      val projectDir = createTempDirectory("translationtools-config").toFile()
+      File(projectDir, "translationtools.yaml").writeText(
+         """
+         apiKey: yaml-key
+         generated:
+           packageName: com.example.translations
+         appleResources:
+           resourceDirectories: not-a-list
+         """.trimIndent()
+      )
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+
+      val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+         resolveConfig(project)
+      }
+      assertTrue(exception.message!!.contains("appleResources.resourceDirectories"))
+   }
+
+   @Test
    fun renderDefaultConfig_should_include_default_locale_and_android_resource_directory()
    {
       val rendered = renderDefaultConfig()

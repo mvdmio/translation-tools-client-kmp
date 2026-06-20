@@ -24,6 +24,9 @@ abstract class PushTranslationsTask : DefaultTask()
    abstract val resourceDirectories: ListProperty<String>
 
    @get:Input
+   abstract val appleResourceDirectories: ListProperty<String>
+
+   @get:Input
    abstract val keyOverrides: MapProperty<String, String>
 
    @get:Input
@@ -31,6 +34,9 @@ abstract class PushTranslationsTask : DefaultTask()
 
    @get:Internal
    internal var parser: AndroidStringResourceParser = AndroidStringResourceParser()
+
+   @get:Internal
+   internal var appleParser: AppleStringResourceParser = AppleStringResourceParser()
 
    @get:Internal
    internal var httpClientFactory: () -> HttpClient = { createDefaultPushHttpClient() }
@@ -46,13 +52,22 @@ abstract class PushTranslationsTask : DefaultTask()
       if (directories.isEmpty())
          throw GradleException("No Android resource directories found. Configure translationtools.yaml androidResources.resourceDirectories.")
 
+      val appleDirectories = appleResourceDirectories.getOrElse(emptyList()).map(project::file).filter(File::exists).distinct()
+
       runBlocking {
          val state = parser.parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), project.path)
           state.warnings.forEach { warning -> logger.warn(warning) }
 
+          val appleProject = if (appleDirectories.isNotEmpty())
+             appleParser.parse(appleDirectories, resolvedDefaultLocale, project.path).also { parsed ->
+                parsed.warnings.forEach { warning -> logger.warn(warning) }
+             }
+          else
+             null
+
           val client = httpClientFactory()
           try {
-            val localItems = state.entries
+            val androidItems = state.entries
                .filter { it.managedRemotely }
                .sortedBy { it.origin + "|" + it.key }
                .flatMap { entry ->
@@ -66,11 +81,27 @@ abstract class PushTranslationsTask : DefaultTask()
                   }
                }
 
+            val appleItems = appleProject?.entries.orEmpty()
+               .flatMap { entry ->
+                  entry.valuesByLocale.entries.map { (locale, value) ->
+                     TranslationPushItemRequest(
+                        origin = entry.origin,
+                        locale = locale,
+                        key = entry.key,
+                        value = value,
+                     )
+                  }
+               }
+
+            val localItems = (androidItems + appleItems)
+               .sortedWith(compareBy<TranslationPushItemRequest> { it.origin }.thenBy { it.locale }.thenBy { it.key })
+
             val items = if (prune.getOrElse(false)) {
                localItems
             }
             else {
-               val remote = pullTranslations(client, resolvedApiKey, state.locales)
+               val locales = (state.locales + appleProject?.locales.orEmpty()).distinct().sorted()
+               val remote = pullTranslations(client, resolvedApiKey, locales)
                mergeRemoteAndLocalPushItems(remote, localItems)
             }
 
