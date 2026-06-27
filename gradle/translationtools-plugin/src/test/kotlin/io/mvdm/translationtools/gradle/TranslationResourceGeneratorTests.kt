@@ -84,4 +84,58 @@ class TranslationResourceGeneratorTests
       assertTrue(!result.contains("object string"), "generated source should not contain nested 'string' object, got:\n$result")
       assertTrue(!result.contains("object Res"), "generated source should no longer use 'Res' object, got:\n$result")
    }
+
+   @Test
+   fun generate_should_carry_placeholder_tokens_through_unchanged()
+   {
+      val project = baseProject.copy(
+         locales = listOf("en"),
+         entries = listOf(
+            AndroidTranslationEntry(
+               ":app:/strings.xml",
+               "greeting",
+               "greeting",
+               mapOf("en" to "Hello {userName}, '{'literal'}' costs \$5"),
+               "strings.xml",
+               true,
+            ),
+         ),
+      )
+
+      val result = renderTranslationResources(
+         project = project,
+         packageName = "com.example.translations",
+      )
+
+      // Braces (token + escaped literal braces) ride through untouched; only the dollar sign is escaped.
+      assertTrue(
+         result.contains("""fallback = "Hello {userName}, '{'literal'}' costs \${'$'}5""""),
+         "expected placeholder tokens carried through unchanged, got:\n$result",
+      )
+   }
+
+   @Test
+   fun bundled_snapshot_should_carry_placeholder_tokens_through_unchanged()
+   {
+      val project = baseProject.copy(
+         locales = listOf("en"),
+         entries = listOf(
+            AndroidTranslationEntry(
+               ":app:/strings.xml",
+               "greeting",
+               "greeting",
+               mapOf("en" to "Hello {userName}, '{'literal'}' costs \$5"),
+               "strings.xml",
+               true,
+            ),
+         ),
+      )
+
+      val result = renderBundledSnapshot(project, "com.example.translations")
+
+      assertTrue(
+         result.contains("""value = "Hello {userName}, '{'literal'}' costs \${'$'}5""""),
+         "expected placeholder tokens carried through unchanged in bundled snapshot, got:\n$result",
+      )
+   }
 }

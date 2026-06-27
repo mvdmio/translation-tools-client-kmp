@@ -96,6 +96,20 @@ public class TranslationToolsHttpApi(
       }
    }
 
+   override suspend fun pushGlobals(environment: String?, names: List<String>)
+   {
+      execute {
+         val normalizedEnvironment = environment?.trim()?.ifBlank { null }
+         val response = httpClient.post("$BASE_URL/api/v1/translations/project") {
+            addCommonHeaders()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(ProjectGlobalsPushBody(emptyList(), normalizedEnvironment, names)))
+         }
+
+         response.requireSuccessBody()
+      }
+   }
+
    private fun normalizedEnvironment(): String? = environment?.trim()?.ifBlank { null }
 
    private fun io.ktor.client.request.HttpRequestBuilder.addCommonHeaders()
@@ -160,4 +174,19 @@ private data class HeartbeatBody(
    val environment: String?,
    val platform: String,
    val version: String,
+)
+
+@Serializable
+private data class ProjectGlobalsPushItem(
+   val origin: String,
+   val locale: String,
+   val key: String,
+   val value: String?,
+)
+
+@Serializable
+private data class ProjectGlobalsPushBody(
+   val items: List<ProjectGlobalsPushItem>,
+   val environment: String?,
+   val globals: List<String>,
 )

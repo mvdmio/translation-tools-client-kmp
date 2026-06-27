@@ -241,6 +241,47 @@ class TranslationToolsHttpApiTests
       assertContains(capturedBody, "\"environment\":null")
    }
 
+   @Test
+   fun pushGlobals_should_post_project_with_empty_items_and_globals_list() = runTest {
+      var capturedMethod: HttpMethod? = null
+      var capturedPath = ""
+      var capturedAuthorization = ""
+      var capturedBody = ""
+      val engine = MockEngine { request ->
+         capturedMethod = request.method
+         capturedPath = request.url.fullPath
+         capturedAuthorization = request.headers[HttpHeaders.Authorization].orEmpty()
+         capturedBody = (request.body as TextContent).text
+         respond(content = "", status = HttpStatusCode.OK)
+      }
+      val api = createApi(engine)
+
+      api.pushGlobals("staging", listOf("appName", "year"))
+
+      assertEquals(HttpMethod.Post, capturedMethod)
+      assertEquals("/api/v1/translations/project", capturedPath)
+      assertEquals("test-api-key", capturedAuthorization)
+      assertContains(capturedBody, "\"items\":[]")
+      assertContains(capturedBody, "\"environment\":\"staging\"")
+      assertContains(capturedBody, "\"globals\":[\"appName\",\"year\"]")
+   }
+
+   @Test
+   fun pushGlobals_should_serialize_null_environment_and_empty_globals() = runTest {
+      var capturedBody = ""
+      val engine = MockEngine { request ->
+         capturedBody = (request.body as TextContent).text
+         respond(content = "", status = HttpStatusCode.OK)
+      }
+      val api = createApi(engine)
+
+      api.pushGlobals(null, emptyList())
+
+      assertContains(capturedBody, "\"items\":[]")
+      assertContains(capturedBody, "\"environment\":null")
+      assertContains(capturedBody, "\"globals\":[]")
+   }
+
    private fun createApi(engine: MockEngine): TranslationToolsHttpApi
    {
       val client = HttpClient(engine)

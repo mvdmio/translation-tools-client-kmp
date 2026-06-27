@@ -10,7 +10,7 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "2.2.0"
+version = "2.3.0"
 
 val generatedVersionDir = layout.buildDirectory.dir("generated/translationtools")
 

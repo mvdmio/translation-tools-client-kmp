@@ -309,6 +309,49 @@ Locale resolution order:
 3. project default locale
 4. `en`
 
+## Placeholders
+
+Translation values may contain named **placeholders** as ICU-compatible tokens — `{` + a camelCase
+identifier + `}`, e.g. `Hello {userName}`. A literal brace is written with the ICU apostrophe escape
+(`'{'`). On KMP you bind placeholders with the string-keyed API (typed accessors are not generated for
+KMP yet); the value is substituted at read time.
+
+```kotlin
+// One-shot map:
+val greeting = client.get(Translations.greeting, placeholders = mapOf("userName" to "Sam"))
+
+// Or the fluent builder:
+val greeting2 = client.withPlaceholders(Translations.greeting)
+    .setPlaceholder("userName", "Sam")
+    .render()
+```
+
+**Global placeholders** are available to every key. Register them once in options as ambient resolvers
+(evaluated per render); their names are pushed to TranslationTools at startup so they appear in the
+management UI:
+
+```kotlin
+val client = TranslationToolsClient(
+    TranslationToolsClientOptions(
+        apiKey = "...",
+        environment = "production",
+        globalPlaceholders = mapOf(
+            "appName" to { "My App" },
+            "userName" to { currentUser()?.name },
+        ),
+    ),
+    api = api,
+)
+```
+
+Failure behavior (a token with no binding and no registered global, or a global whose resolver throws
+or returns null): the default is **degrade** — render the raw `{token}`. Set
+`throwOnPlaceholderError = true` in options to throw a `PlaceholderSubstitutionException` instead. A
+per-call binding shadows a global of the same name.
+
+`getCached(...)` returns the raw value and does **not** substitute; use `get(...)` /
+`withPlaceholders(...)` to render placeholders.
+
 ## Compose
 
 If you use Compose, add `translationtools-client-compose` and provide the client through composition locals.

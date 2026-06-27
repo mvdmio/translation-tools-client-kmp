@@ -1,5 +1,9 @@
 package io.mvdm.translationtools.client
 
+import io.mvdm.translationtools.client.placeholders.GlobalPlaceholderRegistry
+import io.mvdm.translationtools.client.placeholders.GlobalPlaceholderResolver
+import io.mvdm.translationtools.client.placeholders.PlaceholderSubstitution
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +34,7 @@ public class TranslationToolsClient(
    ) : this(options = options, api = api, now = { Clock.System.now() })
 
    private val refreshLock = Mutex()
+   private val globals: GlobalPlaceholderResolver = GlobalPlaceholderRegistry.from(options.globalPlaceholders)
    private val projectMetadataFlow = MutableStateFlow<ProjectMetadata?>(null)
    private val translationsFlow = MutableStateFlow<Map<String, Map<TranslationRef, TranslationItem>>>(emptyMap())
    private val refreshStateFlow = MutableStateFlow(TranslationRefreshState())
@@ -60,6 +65,11 @@ public class TranslationToolsClient(
          // re-registers under a new id on every launch).
          persist()
       }
+
+      // Spec §6: the runtime owns this environment's global placeholder declarations. Push them
+      // once at startup (fire-and-forget, non-fatal) so the server full-replaces them. Empty items
+      // leave keys untouched (the build-time CLI keys push owns those).
+      pushGlobalsAtStartup()
 
       if (!restored) {
          try {
@@ -94,6 +104,27 @@ public class TranslationToolsClient(
       startHeartbeat()
    }
 
+   private fun pushGlobalsAtStartup()
+   {
+      if (globals.registeredNames.isEmpty())
+         return
+
+      backgroundScope.launch {
+         try {
+            api.pushGlobals(
+               environment = options.environment?.trim()?.ifBlank { null },
+               names = globals.registeredNames,
+            )
+         }
+         catch (e: CancellationException) {
+            throw e
+         }
+         catch (_: Exception) {
+            // Best-effort startup declaration; a failed push is retried on the next app start.
+         }
+      }
+   }
+
    private fun startHeartbeat()
    {
       if (!options.heartbeatEnabled)
@@ -117,6 +148,11 @@ public class TranslationToolsClient(
       }
    }
 
+   /**
+    * Return the cached raw value for [ref], or null on a cache miss. This returns the value
+    * verbatim and does NOT apply placeholder substitution; use [get] or [withPlaceholders] to
+    * render placeholder tokens.
+    */
    public fun getCached(ref: TranslationRef, locale: String? = null): String?
    {
       val validatedRef = validateRef(ref)
@@ -129,23 +165,73 @@ public class TranslationToolsClient(
       return getCached(resource.ref, locale) ?: resource.fallback ?: resource.ref.key
    }
 
-   public suspend fun get(ref: TranslationRef, locale: String? = null, defaultValue: String? = null): String
+   public suspend fun get(
+      ref: TranslationRef,
+      locale: String? = null,
+      defaultValue: String? = null,
+      placeholders: Map<String, String?> = emptyMap(),
+   ): String
    {
       val validatedRef = validateRef(ref)
       val resolvedLocale = resolveLocale(locale)
       val cachedItem = translationsFlow.value[resolvedLocale]?.get(validatedRef)
       if (cachedItem != null)
-         return cachedItem.value ?: defaultValue ?: validatedRef.key
+         return render(cachedItem.value ?: defaultValue ?: validatedRef.key, placeholders)
 
       val fetched = api.getTranslation(resolvedLocale, validatedRef, defaultValue)
       putItem(resolvedLocale, fetched)
       persist()
-      return fetched.value ?: defaultValue ?: validatedRef.key
+      return render(fetched.value ?: defaultValue ?: validatedRef.key, placeholders)
    }
 
-   public suspend fun get(origin: String, key: String, locale: String? = null, defaultValue: String? = null): String
+   public suspend fun get(
+      origin: String,
+      key: String,
+      locale: String? = null,
+      defaultValue: String? = null,
+      placeholders: Map<String, String?> = emptyMap(),
+   ): String
    {
-      return get(TranslationRef(origin = origin, key = key), locale, defaultValue)
+      return get(TranslationRef(origin = origin, key = key), locale, defaultValue, placeholders)
+   }
+
+   /**
+    * Begin a fluent placeholder binding for [ref]. Bind values with
+    * [TranslationRenderBuilder.setPlaceholder], then await the builder (or call
+    * [TranslationRenderBuilder.render]) to fetch and render. Globals and the failure-behavior
+    * option apply just as with [get].
+    *
+    * Use this when you want the chained `setPlaceholder(...)` surface; for a one-shot call prefer
+    * the `placeholders = mapOf(...)` overload of [get].
+    */
+   public fun withPlaceholders(ref: TranslationRef, locale: String? = null, defaultValue: String? = null): TranslationRenderBuilder
+   {
+      return TranslationRenderBuilder(this, ref, locale, defaultValue)
+   }
+
+   /**
+    * Begin a fluent placeholder binding for the (`origin`, `key`) pair. See [withPlaceholders].
+    */
+   public fun withPlaceholders(origin: String, key: String, locale: String? = null, defaultValue: String? = null): TranslationRenderBuilder
+   {
+      return TranslationRenderBuilder(this, TranslationRef(origin = origin, key = key), locale, defaultValue)
+   }
+
+   internal fun render(value: String, placeholders: Map<String, String?>): String
+   {
+      // A '{' may open a token and a '\'' may open an ICU escape the parser collapses ('' -> '), so either
+      // forces the full pass. Without the apostrophe check a value like "It''s" would skip collapsing here and
+      // render differently from the server/.NET canonical parser.
+      if (placeholders.isEmpty() && globals.registeredNames.isEmpty() && '{' !in value && '\'' !in value)
+         return value
+
+      return PlaceholderSubstitution.substitute(
+         value = value,
+         bindings = placeholders,
+         globals = globals,
+         knownSet = null,
+         throwOnError = options.throwOnPlaceholderError,
+      )
    }
 
    public suspend fun get(resource: TranslationStringResource, locale: String? = null): String
@@ -154,7 +240,9 @@ public class TranslationToolsClient(
          get(resource.ref, locale, resource.fallback)
       }
       else {
-         getCached(resource, locale)
+         // Render the bundled value too so global placeholders/escapes resolve consistently with the
+         // remotely-managed path (which renders via get(ref, ...)); getCached itself returns the raw value.
+         render(getCached(resource, locale), emptyMap())
       }
    }
 

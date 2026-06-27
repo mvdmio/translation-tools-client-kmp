@@ -460,6 +460,129 @@ class TranslationToolsClientTests
       assertEquals(2, api.heartbeatRequests)
    }
 
+   @Test
+   fun get_with_placeholders_map_should_substitute_bound_tokens() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello {userName}!"))),
+      )
+      val client = createClient(api)
+      client.initialize()
+
+      assertEquals("Hello Bob!", client.get(homeTitleRef, "en", placeholders = mapOf("userName" to "Bob")))
+   }
+
+   @Test
+   fun get_without_placeholders_should_degrade_unbound_token_to_raw() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello {userName}!"))),
+      )
+      val client = createClient(api)
+      client.initialize()
+
+      assertEquals("Hello {userName}!", client.get(homeTitleRef, "en"))
+   }
+
+   @Test
+   fun get_should_leave_value_without_tokens_unchanged() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Plain value"))),
+      )
+      val client = createClient(api)
+      client.initialize()
+
+      assertEquals("Plain value", client.get(homeTitleRef, "en"))
+   }
+
+   @Test
+   fun withPlaceholders_builder_should_render_bound_value() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello {userName}!"))),
+      )
+      val client = createClient(api)
+      client.initialize()
+
+      val rendered = client.withPlaceholders(homeTitleRef, "en")
+         .setPlaceholder("userName", "Bob")
+         .render()
+
+      assertEquals("Hello Bob!", rendered)
+   }
+
+   @Test
+   fun get_should_resolve_registered_global_ambiently() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Welcome to {appName}"))),
+      )
+      val client = createClient(api, globalPlaceholders = mapOf("appName" to { "Acme" }))
+      client.initialize()
+
+      assertEquals("Welcome to Acme", client.get(homeTitleRef, "en"))
+   }
+
+   @Test
+   fun get_binding_should_shadow_global_of_same_name() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Welcome to {appName}"))),
+      )
+      val client = createClient(api, globalPlaceholders = mapOf("appName" to { "Acme" }))
+      client.initialize()
+
+      assertEquals(
+         "Welcome to Local",
+         client.get(homeTitleRef, "en", placeholders = mapOf("appName" to "Local")),
+      )
+   }
+
+   @Test
+   fun get_should_throw_on_unbound_token_when_configured() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Hello {userName}!"))),
+      )
+      val client = createClient(api, throwOnPlaceholderError = true)
+      client.initialize()
+
+      assertFailsWith<io.mvdm.translationtools.client.placeholders.PlaceholderSubstitutionException> {
+         client.get(homeTitleRef, "en")
+      }
+   }
+
+   @Test
+   fun initialize_should_push_registered_globals_at_startup() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         environment = "staging",
+         globalPlaceholders = linkedMapOf("appName" to { "Acme" }, "year" to { "2026" }),
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertEquals(1, api.globalsPushes.size)
+      val (environment, names) = api.globalsPushes.single()
+      assertEquals("staging", environment)
+      assertEquals(listOf("appName", "year"), names)
+   }
+
+   @Test
+   fun initialize_should_not_push_globals_when_none_registered() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(api, backgroundScope = backgroundScope)
+
+      client.initialize()
+      runCurrent()
+
+      assertTrue(api.globalsPushes.isEmpty())
+   }
+
    private fun createClient(
       api: FakeTranslationToolsApi,
       currentLocale: String? = "en",
@@ -470,6 +593,8 @@ class TranslationToolsClientTests
       heartbeatEnabled: Boolean = false,
       heartbeatInterval: Duration = 1.hours,
       backgroundScope: CoroutineScope? = null,
+      globalPlaceholders: Map<String, () -> String?> = emptyMap(),
+      throwOnPlaceholderError: Boolean = false,
       now: () -> Instant = { Instant.parse("2026-03-25T10:00:00Z") },
    ): TranslationToolsClient {
       val options = TranslationToolsClientOptions(
@@ -481,6 +606,8 @@ class TranslationToolsClientTests
          environment = environment,
          heartbeatEnabled = heartbeatEnabled,
          heartbeatInterval = heartbeatInterval,
+         globalPlaceholders = globalPlaceholders,
+         throwOnPlaceholderError = throwOnPlaceholderError,
       )
 
       return if (backgroundScope != null) {
@@ -521,6 +648,7 @@ private class FakeTranslationToolsApi(
    val singleItemRequests = mutableListOf<String>()
    var heartbeatRequests = 0
    var lastHeartbeat: HeartbeatRecord? = null
+   val globalsPushes = mutableListOf<Pair<String?, List<String>>>()
 
    override suspend fun getProjectMetadata(): ProjectMetadata {
       projectRequests += 1
@@ -543,6 +671,10 @@ private class FakeTranslationToolsApi(
       lastHeartbeat = HeartbeatRecord(clientId, environment, platform, version)
       if (heartbeatFailsFirst && heartbeatRequests == 1)
          throw RuntimeException("heartbeat boom")
+   }
+
+   override suspend fun pushGlobals(environment: String?, names: List<String>) {
+      globalsPushes += environment to names
    }
 }
 
