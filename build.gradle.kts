@@ -10,7 +10,7 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "2.1.0"
+version = "2.2.0"
 
 val generatedVersionDir = layout.buildDirectory.dir("generated/translationtools")
 
@@ -33,10 +33,6 @@ val generateTranslationToolsBuildConfig by tasks.registering {
    }
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
-   dependsOn(generateTranslationToolsBuildConfig)
-}
-
 kotlin {
    androidTarget {
       compilerOptions {
@@ -56,7 +52,12 @@ kotlin {
 
    sourceSets {
       commonMain {
-         kotlin.srcDir(generatedVersionDir)
+         // Pass the task provider (not just the output dir) so the build dependency
+         // is carried into the source set for every consumer — the compile tasks and
+         // the *SourcesJar tasks alike. Otherwise the sources jars (built during
+         // publish) read this generated dir without a declared dependency and Gradle
+         // fails task-input validation.
+         kotlin.srcDir(generateTranslationToolsBuildConfig)
       }
 
       commonMain.dependencies {
