@@ -13,6 +13,7 @@ public object TranslationTools
          api = TranslationToolsHttpApi(
             httpClient = httpClient,
             apiKey = options.apiKey,
+            environment = options.environment,
          ),
       )
    }

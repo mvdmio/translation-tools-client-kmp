@@ -4,6 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -19,6 +21,7 @@ public class TranslationToolsClient(
    public val options: TranslationToolsClientOptions,
    private val api: TranslationToolsApi,
    private val now: () -> Instant = { Clock.System.now() },
+   private val backgroundScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 )
 {
    public constructor(
@@ -30,8 +33,8 @@ public class TranslationToolsClient(
    private val projectMetadataFlow = MutableStateFlow<ProjectMetadata?>(null)
    private val translationsFlow = MutableStateFlow<Map<String, Map<TranslationRef, TranslationItem>>>(emptyMap())
    private val refreshStateFlow = MutableStateFlow(TranslationRefreshState())
-   private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
    private var lastSuccessfulRefreshAt: Instant? = null
+   private var clientId: String? = null
 
    public suspend fun initialize()
    {
@@ -50,6 +53,14 @@ public class TranslationToolsClient(
          }
       }
 
+      if (clientId == null) {
+         clientId = newClientId()
+         // Persist the freshly minted id immediately so identity survives restarts even when
+         // background refresh is disabled or the initial refresh fails (otherwise the device
+         // re-registers under a new id on every launch).
+         persist()
+      }
+
       if (!restored) {
          try {
             refresh(force = true)
@@ -60,19 +71,48 @@ public class TranslationToolsClient(
                lastSuccessfulRefreshAt = lastSuccessfulRefreshAt,
                lastFailureMessage = exception.message,
             )
+            startHeartbeat()
             throw exception
          }
+         startHeartbeat()
          return
       }
 
-      if (!options.backgroundRefreshEnabled)
+      if (!options.backgroundRefreshEnabled) {
+         startHeartbeat()
          return
+      }
 
       backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
           try {
              refresh(force = true)
           }
          catch (_: Throwable) {
+         }
+      }
+
+      startHeartbeat()
+   }
+
+   private fun startHeartbeat()
+   {
+      if (!options.heartbeatEnabled)
+         return
+
+      backgroundScope.launch {
+         while (isActive) {
+            try {
+               api.sendHeartbeat(
+                  clientId = clientId ?: newClientId().also { clientId = it },
+                  environment = options.environment?.trim()?.ifBlank { null },
+                  platform = currentPlatform(),
+                  version = translationToolsClientVersion,
+               )
+            }
+            catch (_: Throwable) {
+            }
+
+            delay(options.heartbeatInterval)
          }
       }
    }
@@ -203,6 +243,8 @@ public class TranslationToolsClient(
          normalizeLocale(snapshot.locale) to snapshot.items.associateBy { validateRef(it.ref) }
       }
       lastSuccessfulRefreshAt = stored.lastSuccessfulRefreshAt
+      if (stored.clientId != null)
+         clientId = stored.clientId
       refreshStateFlow.value = TranslationRefreshState(
          status = TranslationRefreshStatus.Ready,
          lastSuccessfulRefreshAt = lastSuccessfulRefreshAt,
@@ -218,6 +260,7 @@ public class TranslationToolsClient(
                TranslationSnapshot(locale, items.values.toList())
             },
             lastSuccessfulRefreshAt = lastSuccessfulRefreshAt,
+            clientId = clientId,
          )
       )
    }

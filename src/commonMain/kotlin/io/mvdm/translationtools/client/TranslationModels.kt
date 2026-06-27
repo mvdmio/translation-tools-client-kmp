@@ -26,6 +26,7 @@ public data class StoredTranslations(
    val projectMetadata: ProjectMetadata?,
    val snapshots: List<TranslationSnapshot>,
    val lastSuccessfulRefreshAt: Instant?,
+   val clientId: String? = null,
 )
 
 public enum class TranslationRefreshStatus

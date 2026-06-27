@@ -1,17 +1,23 @@
 package io.mvdm.translationtools.client
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 
 class TranslationToolsClientTests
 {
@@ -153,7 +159,7 @@ class TranslationToolsClientTests
 
       assertEquals("Fresh", client.getCached(homeTitleRef, "en"))
       assertEquals("en", api.localeRequests.single())
-      assertEquals("Fresh", store.saved.single().snapshots.single().items.single().value)
+      assertEquals("Fresh", store.saved.last().snapshots.single().items.single().value)
    }
 
    @Test
@@ -197,7 +203,11 @@ class TranslationToolsClientTests
 
       assertEquals("Cached", client.getCached(homeTitleRef, "en"))
       assertEquals(0, api.projectRequests)
-      assertTrue(store.saved.isEmpty())
+      // Background refresh is disabled, so no network refresh persists — but a freshly
+      // minted client id must still be saved so the device keeps a stable identity.
+      val persisted = store.saved.single()
+      assertTrue(persisted.clientId!!.isNotBlank())
+      assertEquals("Cached", persisted.snapshots.single().items.single().value)
    }
 
    @Test
@@ -263,38 +273,254 @@ class TranslationToolsClientTests
       }
    }
 
+   @Test
+   fun heartbeat_should_fire_once_on_initialize() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         environment = "staging",
+         heartbeatEnabled = true,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertEquals(1, api.heartbeatRequests)
+      val heartbeat = api.lastHeartbeat!!
+      assertTrue(heartbeat.clientId.isNotBlank())
+      assertEquals("staging", heartbeat.environment)
+      assertEquals("kmp-jvm", heartbeat.platform)
+      assertTrue(heartbeat.version.isNotBlank())
+   }
+
+   @Test
+   fun heartbeat_should_fire_again_after_interval() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         heartbeatEnabled = true,
+         heartbeatInterval = 1.hours,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+      assertEquals(1, api.heartbeatRequests)
+
+      advanceTimeBy(1.hours)
+      runCurrent()
+
+      assertEquals(2, api.heartbeatRequests)
+   }
+
+   @Test
+   fun heartbeat_should_not_fire_when_disabled() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         heartbeatEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertEquals(0, api.heartbeatRequests)
+   }
+
+   @Test
+   fun heartbeat_should_use_persisted_client_id_and_carry_it_forward() = runTest {
+      val store = FakeTranslationSnapshotStore(
+         stored = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Cached")))),
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+            clientId = "fixed-id",
+         )
+      )
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Fresh"))),
+      )
+      val client = createClient(
+         api,
+         store = store,
+         heartbeatEnabled = true,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertEquals("fixed-id", api.lastHeartbeat!!.clientId)
+      assertEquals("fixed-id", store.saved.last().clientId)
+   }
+
+   @Test
+   fun initialize_should_persist_freshly_generated_client_id_when_background_refresh_disabled() = runTest {
+      // Pre-upgrade cache: a snapshot exists but carries no client id, and background refresh is off.
+      val store = FakeTranslationSnapshotStore(
+         stored = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Cached")))),
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+         )
+      )
+      val firstApi = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val firstClient = createClient(
+         firstApi,
+         store = store,
+         heartbeatEnabled = true,
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      firstClient.initialize()
+      runCurrent()
+
+      val firstId = firstApi.lastHeartbeat!!.clientId
+      assertEquals(0, firstApi.projectRequests)
+      assertEquals(firstId, store.saved.last().clientId)
+
+      // Simulate a restart backed by what the first client persisted: the id must be reused.
+      val secondApi = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val secondClient = createClient(
+         secondApi,
+         store = FakeTranslationSnapshotStore(stored = store.saved.last()),
+         heartbeatEnabled = true,
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      secondClient.initialize()
+      runCurrent()
+
+      assertEquals(firstId, secondApi.lastHeartbeat!!.clientId)
+   }
+
+   @Test
+   fun initialize_should_persist_freshly_generated_client_id_even_when_initial_refresh_fails() = runTest {
+      // No cache and the network is down: the initial refresh throws out of initialize(),
+      // but the freshly minted client id must already have been persisted.
+      val store = FakeTranslationSnapshotStore()
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         onProjectMetadata = { throw RuntimeException("offline") },
+      )
+      val client = createClient(
+         api,
+         store = store,
+         heartbeatEnabled = true,
+         backgroundScope = backgroundScope,
+      )
+
+      assertFailsWith<RuntimeException> { client.initialize() }
+      runCurrent()
+
+      val persistedId = store.saved.single().clientId
+      assertTrue(persistedId!!.isNotBlank())
+      assertEquals(persistedId, api.lastHeartbeat!!.clientId)
+   }
+
+   @Test
+   fun heartbeat_should_generate_distinct_ids_without_persistence() = runTest {
+      val apiA = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val apiB = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val clientA = createClient(apiA, heartbeatEnabled = true, backgroundScope = backgroundScope)
+      val clientB = createClient(apiB, heartbeatEnabled = true, backgroundScope = backgroundScope)
+
+      clientA.initialize()
+      clientB.initialize()
+      runCurrent()
+
+      assertNotEquals(apiA.lastHeartbeat!!.clientId, apiB.lastHeartbeat!!.clientId)
+   }
+
+   @Test
+   fun heartbeat_failure_should_not_crash_initialize_and_retries_next_interval() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         heartbeatFailsFirst = true,
+      )
+      val client = createClient(
+         api,
+         heartbeatEnabled = true,
+         heartbeatInterval = 1.hours,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+      assertEquals(1, api.heartbeatRequests)
+
+      advanceTimeBy(1.hours)
+      runCurrent()
+
+      assertEquals(2, api.heartbeatRequests)
+   }
+
    private fun createClient(
       api: FakeTranslationToolsApi,
       currentLocale: String? = "en",
       store: TranslationSnapshotStore = NoOpTranslationSnapshotStore,
       bundledSnapshot: StoredTranslations? = null,
       backgroundRefreshEnabled: Boolean = true,
+      environment: String? = null,
+      heartbeatEnabled: Boolean = false,
+      heartbeatInterval: Duration = 1.hours,
+      backgroundScope: CoroutineScope? = null,
       now: () -> Instant = { Instant.parse("2026-03-25T10:00:00Z") },
    ): TranslationToolsClient {
-      return TranslationToolsClient(
-         api = api,
-         options = TranslationToolsClientOptions(
-            apiKey = "test-api-key",
-            backgroundRefreshEnabled = backgroundRefreshEnabled,
-            currentLocaleProvider = { currentLocale },
-            snapshotStore = store,
-            bundledSnapshot = bundledSnapshot,
-         ),
-         now = now,
+      val options = TranslationToolsClientOptions(
+         apiKey = "test-api-key",
+         backgroundRefreshEnabled = backgroundRefreshEnabled,
+         currentLocaleProvider = { currentLocale },
+         snapshotStore = store,
+         bundledSnapshot = bundledSnapshot,
+         environment = environment,
+         heartbeatEnabled = heartbeatEnabled,
+         heartbeatInterval = heartbeatInterval,
       )
+
+      return if (backgroundScope != null) {
+         TranslationToolsClient(
+            api = api,
+            options = options,
+            now = now,
+            backgroundScope = backgroundScope,
+         )
+      }
+      else {
+         TranslationToolsClient(
+            api = api,
+            options = options,
+            now = now,
+         )
+      }
    }
 }
+
+private data class HeartbeatRecord(
+   val clientId: String,
+   val environment: String?,
+   val platform: String,
+   val version: String,
+)
 
 private class FakeTranslationToolsApi(
    private val metadata: ProjectMetadata,
    private val localeItems: Map<String, List<TranslationItem>> = emptyMap(),
    val singleItems: MutableMap<String, TranslationItem> = mutableMapOf(),
    private val onProjectMetadata: suspend () -> Unit = {},
+   private val heartbeatFailsFirst: Boolean = false,
 ) : TranslationToolsApi
 {
    var projectRequests: Int = 0
    val localeRequests = mutableListOf<String>()
    val singleItemRequests = mutableListOf<String>()
+   var heartbeatRequests = 0
+   var lastHeartbeat: HeartbeatRecord? = null
 
    override suspend fun getProjectMetadata(): ProjectMetadata {
       projectRequests += 1
@@ -310,6 +536,13 @@ private class FakeTranslationToolsApi(
    override suspend fun getTranslation(locale: String, ref: TranslationRef, defaultValue: String?): TranslationItem {
       singleItemRequests += "$locale|${ref.origin}|${ref.key}|${defaultValue ?: "<null>"}"
       return singleItems["$locale|${ref.origin}|${ref.key}"] ?: TranslationItem(ref, defaultValue)
+   }
+
+   override suspend fun sendHeartbeat(clientId: String, environment: String?, platform: String, version: String) {
+      heartbeatRequests += 1
+      lastHeartbeat = HeartbeatRecord(clientId, environment, platform, version)
+      if (heartbeatFailsFirst && heartbeatRequests == 1)
+         throw RuntimeException("heartbeat boom")
    }
 }
 

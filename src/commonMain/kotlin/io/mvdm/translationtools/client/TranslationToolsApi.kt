@@ -7,4 +7,8 @@ public interface TranslationToolsApi
    public suspend fun getLocale(locale: String): List<TranslationItem>
 
    public suspend fun getTranslation(locale: String, ref: TranslationRef, defaultValue: String? = null): TranslationItem
+
+   public suspend fun sendHeartbeat(clientId: String, environment: String?, platform: String, version: String)
+   {
+   }
 }

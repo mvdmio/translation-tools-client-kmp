@@ -12,6 +12,31 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 group = "io.mvdm.translationtools"
 version = "2.1.0"
 
+val generatedVersionDir = layout.buildDirectory.dir("generated/translationtools")
+
+val generateTranslationToolsBuildConfig by tasks.registering {
+   val outputDir = generatedVersionDir
+   val projectVersion = version.toString()
+   inputs.property("version", projectVersion)
+   outputs.dir(outputDir)
+
+   doLast {
+      val packageDir = outputDir.get().dir("io/mvdm/translationtools/client").asFile
+      packageDir.mkdirs()
+      packageDir.resolve("TranslationToolsBuildConfig.kt").writeText(
+         """
+         package io.mvdm.translationtools.client
+
+         internal const val TRANSLATION_TOOLS_VERSION: String = "$projectVersion"
+         """.trimIndent() + "\n"
+      )
+   }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
+   dependsOn(generateTranslationToolsBuildConfig)
+}
+
 kotlin {
    androidTarget {
       compilerOptions {
@@ -30,6 +55,10 @@ kotlin {
    iosSimulatorArm64()
 
    sourceSets {
+      commonMain {
+         kotlin.srcDir(generatedVersionDir)
+      }
+
       commonMain.dependencies {
          api(libs.kotlinx.coroutines.core)
          api(libs.kotlinx.datetime)

@@ -7,20 +7,25 @@ import io.ktor.client.request.accept
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.path
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 public class TranslationToolsHttpApi(
    private val httpClient: HttpClient,
    private val apiKey: String,
+   private val environment: String? = null,
 ) : TranslationToolsApi
 {
    private val json = Json {
@@ -45,7 +50,9 @@ public class TranslationToolsHttpApi(
       return execute {
          val response = httpClient.get(BASE_URL) {
             url {
-               path("api", "v1", "translations", locale)
+               val segments = mutableListOf("api", "v1", "translations", locale)
+               normalizedEnvironment()?.let { segments += it }
+               path(*segments.toTypedArray())
             }
             addCommonHeaders()
          }
@@ -62,7 +69,9 @@ public class TranslationToolsHttpApi(
          val encodedOrigin = ref.origin.encodeURLPathPart()
          val encodedLocale = locale.encodeURLPathPart()
          val encodedKey = ref.key.encodeURLPathPart()
-         val response = httpClient.get("$BASE_URL/api/v1/translations/$encodedOrigin/$encodedLocale/$encodedKey") {
+         val basePath = "$BASE_URL/api/v1/translations/$encodedOrigin/$encodedLocale/$encodedKey"
+         val url = normalizedEnvironment()?.let { "$basePath/${it.encodeURLPathPart()}" } ?: basePath
+         val response = httpClient.get(url) {
             if (defaultValue != null)
                parameter("defaultValue", defaultValue)
             addCommonHeaders()
@@ -73,6 +82,21 @@ public class TranslationToolsHttpApi(
          TranslationItem(TranslationRef(body.origin, body.key), body.value)
       }
    }
+
+   override suspend fun sendHeartbeat(clientId: String, environment: String?, platform: String, version: String)
+   {
+      execute {
+         val response = httpClient.post("$BASE_URL/api/v1/translations/heartbeat") {
+            addCommonHeaders()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(HeartbeatBody(clientId, environment, platform, version)))
+         }
+
+         response.requireSuccessBody()
+      }
+   }
+
+   private fun normalizedEnvironment(): String? = environment?.trim()?.ifBlank { null }
 
    private fun io.ktor.client.request.HttpRequestBuilder.addCommonHeaders()
    {
@@ -128,4 +152,12 @@ private data class TranslationItemResponse(
    val origin: String,
    val key: String,
    val value: String?,
+)
+
+@Serializable
+private data class HeartbeatBody(
+   val clientId: String,
+   val environment: String?,
+   val platform: String,
+   val version: String,
 )
