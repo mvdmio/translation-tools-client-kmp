@@ -79,7 +79,11 @@ class TranslationToolsPlugin : Plugin<Project>
          task.resourceDirectories.set(resolvedConfig.map { it.config.androidResources.resourceDirectories })
          task.appleResourceDirectories.set(resolvedConfig.map { it.config.appleResources?.resourceDirectories ?: emptyList() })
          task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
-         task.prune.set(project.providers.gradleProperty("translationtools.prune").map(String::toBoolean).orElse(false))
+         task.prune.set(
+            project.providers.gradleProperty("translationtools.prune")
+               .map(String::toBoolean)
+               .orElse(resolvedConfig.map { it.config.androidResources.prune })
+         )
       }
 
       project.plugins.withId("org.jetbrains.kotlin.multiplatform") {

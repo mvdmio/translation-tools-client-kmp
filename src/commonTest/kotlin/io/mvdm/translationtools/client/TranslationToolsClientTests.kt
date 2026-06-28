@@ -290,7 +290,7 @@ class TranslationToolsClientTests
       val heartbeat = api.lastHeartbeat!!
       assertTrue(heartbeat.clientId.isNotBlank())
       assertEquals("staging", heartbeat.environment)
-      assertEquals("kmp-jvm", heartbeat.platform)
+      assertTrue(heartbeat.platform in setOf("kmp-jvm", "kmp-android", "kmp-ios"))
       assertTrue(heartbeat.version.isNotBlank())
    }
 

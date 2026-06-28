@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/2.1.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/2.3.0/
 ```
 
 Repository:
@@ -41,7 +41,7 @@ Runtime client:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:2.1.0")
+    implementation("io.mvdm.translationtools:translationtools-client-kmp:2.3.0")
 }
 ```
 
@@ -49,7 +49,7 @@ Optional Compose helpers:
 
 ```kotlin
 dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:2.1.0")
+    implementation("io.mvdm.translationtools:translationtools-client-compose:2.3.0")
 }
 ```
 
@@ -57,8 +57,8 @@ Version catalog:
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "2.1.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "2.1.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "2.3.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "2.3.0" }
 ```
 
 ```kotlin
@@ -167,6 +167,23 @@ androidResources:
 `defaultLocale` and `locales` are shared across both platforms. The `appleResources` block
 is optional; omitting it leaves the build Android-only and unchanged.
 
+Config fields:
+
+- `apiKey` — project API key. Can also come from a Gradle property or env var (see lookup order below).
+- `defaultLocale` — base locale; defaults to `en`.
+- `locales` — the project's locale set.
+- `generated.packageName` — package for the generated `Translations` / `TranslationsBundledSnapshot`.
+  Defaults to `<android-namespace>.translations` (falling back to `<project.group>.translations`).
+- `androidResources.resourceDirectories` — where your `values*/**.xml` live. Defaults to
+  `src/androidMain/res`.
+- `androidResources.keyOverrides` — rename an XML `name` to a different translation key, written as
+  `xml-name: translation-key`. Applied consistently to generation and push/pull. Defaults to `{}`.
+- `androidResources.prune` — when `true`, `pushTranslations` deletes remote keys that no longer exist
+  locally (the remote becomes an exact mirror of local); `-Ptranslationtools.prune` overrides it.
+  Defaults to `false` (merge — remote-only keys are kept).
+- `appleResources.resourceDirectories` — optional; enables Apple `.strings` sync (see
+  [Apple `.strings` (iOS)](#apple-strings-ios)).
+
 API key lookup order (Gradle plugin):
 
 1. Gradle property `-Ptranslationtools.apiKey=...`
@@ -271,6 +288,44 @@ fun createTranslationsClient(context: Context) = TranslationTools.createClient(
 )
 ```
 
+iOS example. There is no iOS-specific snapshot-store helper; use the common
+`TranslationSnapshotStores.file(...)` with a path inside the app sandbox:
+
+```kotlin
+import com.example.translations.TranslationsBundledSnapshot
+import io.ktor.client.HttpClient
+import io.mvdm.translationtools.client.TranslationSnapshotStores
+import io.mvdm.translationtools.client.TranslationTools
+import io.mvdm.translationtools.client.TranslationToolsClientOptions
+import okio.FileSystem
+import platform.Foundation.NSDocumentDirectory
+import platform.Foundation.NSLocale
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSUserDomainMask
+
+val documentsPath = NSSearchPathForDirectoriesInDomains(
+    NSDocumentDirectory, NSUserDomainMask, true,
+).first() as String
+
+val client = TranslationTools.createClient(
+    httpClient = HttpClient(),
+    options = TranslationToolsClientOptions(
+        apiKey = "your-project-api-key",
+        currentLocaleProvider = { NSLocale.currentLocale.languageCode },
+        snapshotStore = TranslationSnapshotStores.file(
+            filePath = "$documentsPath/translationtools/translations.json",
+            fileSystem = FileSystem.SYSTEM,
+        ),
+        bundledSnapshot = TranslationsBundledSnapshot.value,
+    ),
+)
+```
+
+`TranslationSnapshotStores.file(filePath, fileSystem)` works on every target;
+`JvmTranslationSnapshotStores` and `AndroidTranslationSnapshotStores` are just platform
+conveniences over it. If you omit `snapshotStore`, the client uses an in-memory no-op store and
+nothing is persisted across launches.
+
 ### 6. Initialize once during app startup
 
 ```kotlin
@@ -309,6 +364,50 @@ Locale resolution order:
 3. project default locale
 4. `en`
 
+## Client options
+
+`TranslationToolsClientOptions` controls runtime behavior. Only `apiKey` is required.
+
+| Option | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `apiKey` | `String` | — (required) | Project API key used to refresh translations and send heartbeats. |
+| `currentLocaleProvider` | `() -> String?` | `{ null }` | Resolves the active locale per read (see locale resolution order above). |
+| `preferredLocales` | `Set<String>` | `emptySet()` | Limits which locales are downloaded on refresh. When empty, the client fetches `currentLocaleProvider()` + the project default. Set it to pre-fetch a fixed set. |
+| `snapshotStore` | `TranslationSnapshotStore` | no-op (no persistence) | Where refreshed translations are cached between launches. |
+| `bundledSnapshot` | `StoredTranslations?` | `null` | Generated `TranslationsBundledSnapshot.value`, used as offline fallback before the first refresh. |
+| `backgroundRefreshEnabled` | `Boolean` | `true` | Whether `initialize()` starts a background refresh after restoring the cache. Set `false` when no API key is available. |
+| `refreshInterval` | `Duration` | `1.hours` | Staleness window for `refreshIfStale()` and the background refresh. |
+| `environment` | `String?` | `null` | Scopes translations and global placeholders to a named server-side environment (e.g. `"production"`, `"staging"`). |
+| `heartbeatEnabled` | `Boolean` | `true` | Periodically reports this client (platform, version, environment) so active clients appear in the TranslationTools management UI. |
+| `heartbeatInterval` | `Duration` | `1.hours` | How often the heartbeat is sent. |
+| `globalPlaceholders` | `Map<String, () -> String?>` | `emptyMap()` | Ambient placeholder resolvers available to every key (see [Placeholders](#placeholders)). |
+| `throwOnPlaceholderError` | `Boolean` | `false` | Throw `PlaceholderSubstitutionException` on an unresolved placeholder instead of degrading to the raw token. |
+
+## Refreshing translations
+
+`initialize()` restores the cache and, when `backgroundRefreshEnabled` is set, refreshes once in the
+background. You can also drive refresh manually:
+
+```kotlin
+client.refresh()        // force an immediate refresh
+client.refreshIfStale() // refresh only if older than refreshInterval
+```
+
+Observe refresh status to drive UI — an "updating…" indicator, or an offline banner on failure:
+
+```kotlin
+import io.mvdm.translationtools.client.TranslationRefreshStatus
+
+client.observeRefreshState().collect { state ->
+    when (state.status) {
+        TranslationRefreshStatus.Failed -> showOffline(state.lastFailureMessage)
+        TranslationRefreshStatus.Ready  -> hideOffline()
+        else -> { /* Idle, RestoringCache, Refreshing */ }
+    }
+    // state.lastSuccessfulRefreshAt is also available
+}
+```
+
 ## Placeholders
 
 Translation values may contain named **placeholders** as ICU-compatible tokens — `{` + a camelCase
@@ -331,8 +430,9 @@ val greeting2 = client.withPlaceholders(Translations.greeting)
 management UI:
 
 ```kotlin
-val client = TranslationToolsClient(
-    TranslationToolsClientOptions(
+val client = TranslationTools.createClient(
+    httpClient = HttpClient(),
+    options = TranslationToolsClientOptions(
         apiKey = "...",
         environment = "production",
         globalPlaceholders = mapOf(
@@ -340,7 +440,6 @@ val client = TranslationToolsClient(
             "userName" to { currentUser()?.name },
         ),
     ),
-    api = api,
 )
 ```
 
@@ -389,8 +488,15 @@ Available Gradle tasks:
   Generates `Translations.*` and `TranslationsBundledSnapshot` from local XML.
 - `./gradlew.bat pushTranslations`
   Uploads local XML — and, when `appleResources` is configured, Apple `.strings` — to TranslationTools.
+  By default this **merges**: remote keys you don't have locally are preserved. To make the remote
+  exactly match local (deleting remote-only keys), set `androidResources.prune: true` in
+  `translationtools.yaml`, or run with `-Ptranslationtools.prune=true` (the Gradle property overrides
+  the config value).
+  Strings marked `translatable="false"` are local-only — never pushed.
 - `./gradlew.bat pullTranslations`
   Downloads translations from TranslationTools, updates local XML (and Apple `.strings`), then regenerates Kotlin resources.
+  Existing entries are updated in place; new keys are added. Keys not managed remotely are written back
+  with `translatable="false"`.
 
 `generateTranslationResources` stays Android-only; it never reads Apple `.strings`.
 
