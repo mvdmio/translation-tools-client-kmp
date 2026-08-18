@@ -17,6 +17,7 @@ data class TranslationToolsConfig(
 
 data class GeneratedConfig(
    val packageName: String?,
+   val enabled: Boolean = true,
 )
 
 data class AndroidResourcesConfig(
@@ -81,6 +82,15 @@ internal fun parseConfig(file: File): TranslationToolsConfig
    if (generated?.containsKey("objectName") == true)
       throw org.gradle.api.GradleException("'generated.objectName' is no longer supported. The generated object is always named 'Translations'. Remove this key from ${file.path}.")
    val packageName = generated?.get("packageName") as? String
+   val enabled = if (generated != null && generated.containsKey("enabled"))
+   {
+      val rawEnabled = generated["enabled"]
+      if (rawEnabled !is Boolean)
+         throw org.gradle.api.GradleException("'generated.enabled' in ${file.path} must be a boolean, not ${rawEnabled?.let { it::class.simpleName } ?: "null"}.")
+      rawEnabled
+   }
+   else
+      true
    val rawAndroidResources = loaded["androidResources"]
    if (rawAndroidResources != null && rawAndroidResources !is Map<*, *>)
       throw org.gradle.api.GradleException("'androidResources' in ${file.path} must be a YAML map.")
@@ -114,7 +124,7 @@ internal fun parseConfig(file: File): TranslationToolsConfig
       apiKey = apiKey,
       defaultLocale = defaultLocale,
       locales = locales,
-      generated = GeneratedConfig(packageName = packageName),
+      generated = GeneratedConfig(packageName = packageName, enabled = enabled),
        androidResources = AndroidResourcesConfig(
           resourceDirectories = resourceDirectories,
           keyOverrides = keyOverrides,

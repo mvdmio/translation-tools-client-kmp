@@ -13,6 +13,7 @@ class TranslationToolsPlugin : Plugin<Project>
       val configFile = resolveConfigFile(project)
       val resolvedConfig = project.provider { resolveConfig(project) }
       val baseUrl = project.providers.gradleProperty("translationtools.baseUrl").orElse(BASE_URL)
+      val generatedCodegenEnabled = isGeneratedCodegenEnabled(project)
 
       project.tasks.register("initTranslationTools", InitTranslationToolsTask::class.java) { task ->
          task.group = "translationtools"
@@ -72,7 +73,8 @@ class TranslationToolsPlugin : Plugin<Project>
            task.configuredLocales.set(resolvedConfig.map { it.config.locales })
            task.projectPathInput.set(project.path)
            task.baseUrl.set(baseUrl)
-             task.finalizedBy(generateTask)
+           if (generatedCodegenEnabled)
+              task.finalizedBy(generateTask)
           }
 
       project.tasks.register("pushTranslations", PushTranslationsTask::class.java) { task ->
@@ -100,6 +102,9 @@ class TranslationToolsPlugin : Plugin<Project>
       }
 
       project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+         if (!generatedCodegenEnabled)
+            return@withId
+
          val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
          kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(
             project.layout.buildDirectory.dir("generated/source/translationtools/commonMain/kotlin"),
@@ -115,6 +120,14 @@ class TranslationToolsPlugin : Plugin<Project>
             }
       }
    }
+}
+
+internal fun isGeneratedCodegenEnabled(project: Project): Boolean
+{
+   val configFile = resolveConfigFile(project).asFile
+   if (!configFile.exists())
+      return true
+   return parseConfig(configFile).generated?.enabled ?: true
 }
 
 private fun inferDefaultGeneratedPackage(project: Project): String

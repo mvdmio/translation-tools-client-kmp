@@ -188,6 +188,10 @@ Config fields:
 - `locales` — the project's locale set.
 - `generated.packageName` — package for the generated `Translations` / `TranslationsBundledSnapshot`.
   Defaults to `<android-namespace>.translations` (falling back to `<project.group>.translations`).
+- `generated.enabled` — optional; when `false`, the plugin still registers push/pull/init/generate but
+  does not wire `Translations.*` codegen into Kotlin compile or pull on a KMP module. Omit or set
+  `true` to keep today's generate-on-compile behavior. Use this for sync-only on the module that
+  owns the Android XML (this is not Apple `.strings` sync-only — see ADR 0001).
 - `androidResources.resourceDirectories` — where your `values*/**.xml` live. Defaults to
   `src/androidMain/res`.
 - `androidResources.keyOverrides` — rename an XML `name` to a different translation key, written as
