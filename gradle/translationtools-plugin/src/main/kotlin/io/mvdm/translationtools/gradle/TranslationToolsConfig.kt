@@ -60,10 +60,22 @@ internal fun resolveConfigFile(project: Project): RegularFile
    return project.layout.projectDirectory.file(DEFAULT_CONFIG_FILE)
 }
 
+internal fun readTranslationToolsConfig(project: Project): TranslationToolsConfig?
+{
+   val configFile = resolveConfigFile(project)
+   val text = project.providers.fileContents(configFile).asText.orNull ?: return null
+   return parseConfig(text, configFile.asFile)
+}
+
 internal fun parseConfig(file: File): TranslationToolsConfig
 {
+   return parseConfig(file.readText(), file)
+}
+
+internal fun parseConfig(text: String, file: File): TranslationToolsConfig
+{
    val settings = LoadSettings.builder().build()
-   val loaded = Load(settings).loadFromInputStream(file.inputStream()) as? Map<*, *>
+   val loaded = Load(settings).loadFromString(text) as? Map<*, *>
       ?: throw org.gradle.api.GradleException("Invalid TranslationTools config: ${file.path}")
 
    val apiKey = loaded["apiKey"] as? String

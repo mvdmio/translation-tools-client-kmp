@@ -17,11 +17,22 @@ internal fun writeBuildFiles(projectDir: File, kotlinVersion: String = "1.9.25")
          jvm()
       }
 
+      tasks.register("printCommonMainKotlinSrcDirs") {
+         val srcDirs = project.extensions
+            .getByType(org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java)
+            .sourceSets.getByName("commonMain").kotlin.srcDirs
+         doLast {
+            srcDirs.forEach { src ->
+               println("COMMON_MAIN_SRC=" + src.invariantSeparatorsPath)
+            }
+         }
+      }
+
       """.trimIndent()
    )
 }
 
-internal fun writeSyncOnlyBuildFiles(projectDir: File)
+internal fun writeNonKmpBuildFiles(projectDir: File)
 {
    writeSettingsFiles(projectDir)
 
@@ -56,20 +67,36 @@ private fun writeSettingsFiles(projectDir: File)
    )
 }
 
-internal fun writeStandardTestFixtures(projectDir: File)
+internal fun writeStandardTestFixtures(
+   projectDir: File,
+   enabled: Boolean? = null,
+   prune: Boolean? = null,
+   locales: List<String> = listOf("en"),
+   appleResourceDirectories: List<String> = emptyList(),
+)
 {
    File(projectDir, "translationtools.yaml").writeText(
-      """
-      apiKey: test-key
-      defaultLocale: en
-      locales:
-        - en
-      generated:
-        packageName: com.example.translations
-      androidResources:
-        resourceDirectories:
-          - src/androidMain/res
-      """.trimIndent()
+      buildString {
+         appendLine("apiKey: test-key")
+         appendLine("defaultLocale: en")
+         appendLine("locales:")
+         locales.forEach { appendLine("  - $it") }
+         appendLine("generated:")
+         if (enabled != null)
+            appendLine("  enabled: $enabled")
+         appendLine("  packageName: com.example.translations")
+         appendLine("androidResources:")
+         appendLine("  resourceDirectories:")
+         appendLine("    - src/androidMain/res")
+         if (prune != null)
+            appendLine("  prune: $prune")
+         if (appleResourceDirectories.isNotEmpty())
+         {
+            appendLine("appleResources:")
+            appendLine("  resourceDirectories:")
+            appleResourceDirectories.forEach { appendLine("    - $it") }
+         }
+      },
    )
    File(projectDir, "src/androidMain/res/values").mkdirs()
    File(projectDir, "src/androidMain/res/values/strings.xml").writeText(

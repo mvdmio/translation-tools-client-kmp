@@ -2,6 +2,7 @@ package io.mvdm.translationtools.gradle
 
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
+import org.gradle.testkit.runner.UnexpectedBuildFailure
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -22,7 +23,7 @@ class GeneratedEnabledFunctionalTests
       ).use { server ->
          val projectDir = createTempDirectory("translationtools-sync-only-kmp").toFile()
          writeBuildFiles(projectDir)
-         writeSyncOnlyKmpFixtures(projectDir, enabled = false)
+         writeStandardTestFixtures(projectDir, enabled = false)
          writeCommonMainStub(projectDir)
 
          val push = runTask(projectDir, "pushTranslations", "-Ptranslationtools.baseUrl=${server.baseUrl}")
@@ -37,6 +38,14 @@ class GeneratedEnabledFunctionalTests
          assertEquals(TaskOutcome.SUCCESS, compile.task(":compileKotlinJvm")?.outcome)
          assertNull(compile.task(":generateTranslationResources"))
          assertTrue(!generatedTranslationsFile(projectDir).exists())
+
+         val srcDirs = runTask(projectDir, "printCommonMainKotlinSrcDirs")
+         val commonMainSrc = srcDirs.output.lines().filter { it.startsWith("COMMON_MAIN_SRC=") }
+         assertTrue(commonMainSrc.isNotEmpty(), srcDirs.output)
+         assertTrue(
+            commonMainSrc.none { it.contains("generated/source/translationtools") },
+            srcDirs.output,
+         )
       }
    }
 
@@ -45,11 +54,13 @@ class GeneratedEnabledFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-enabled-omitted").toFile()
       writeBuildFiles(projectDir)
-      writeSyncOnlyKmpFixtures(projectDir, enabled = null)
+      writeStandardTestFixtures(projectDir)
       writeCommonMainStub(projectDir)
 
-      val dryRun = runTask(projectDir, "compileKotlinJvm", "--dry-run")
-      assertTrue(dryRun.output.contains(":generateTranslationResources"))
+      val compile = runCompile(projectDir)
+      assertEquals(TaskOutcome.SUCCESS, compile.task(":generateTranslationResources")?.outcome)
+      assertTrue(generatedTranslationsFile(projectDir).exists())
+      assertTrue(generatedTranslationsFile(projectDir).readText().contains("object Translations"))
    }
 
    @Test
@@ -57,11 +68,13 @@ class GeneratedEnabledFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-enabled-true").toFile()
       writeBuildFiles(projectDir)
-      writeSyncOnlyKmpFixtures(projectDir, enabled = true)
+      writeStandardTestFixtures(projectDir, enabled = true)
       writeCommonMainStub(projectDir)
 
-      val dryRun = runTask(projectDir, "compileKotlinJvm", "--dry-run")
-      assertTrue(dryRun.output.contains(":generateTranslationResources"))
+      val compile = runCompile(projectDir)
+      assertEquals(TaskOutcome.SUCCESS, compile.task(":generateTranslationResources")?.outcome)
+      assertTrue(generatedTranslationsFile(projectDir).exists())
+      assertTrue(generatedTranslationsFile(projectDir).readText().contains("object Translations"))
    }
 
    @Test
@@ -70,7 +83,7 @@ class GeneratedEnabledFunctionalTests
       MockTranslationToolsServer().use { server ->
          val projectDir = createTempDirectory("translationtools-pull-no-generate").toFile()
          writeBuildFiles(projectDir)
-         writeSyncOnlyKmpFixtures(projectDir, enabled = false)
+         writeStandardTestFixtures(projectDir, enabled = false)
 
          val result = runTask(projectDir, "pullTranslations", "-Ptranslationtools.baseUrl=${server.baseUrl}")
          assertEquals(TaskOutcome.SUCCESS, result.task(":pullTranslations")?.outcome)
@@ -84,7 +97,7 @@ class GeneratedEnabledFunctionalTests
    {
       val projectDir = createTempDirectory("translationtools-generate-by-hand").toFile()
       writeBuildFiles(projectDir)
-      writeSyncOnlyKmpFixtures(projectDir, enabled = false)
+      writeStandardTestFixtures(projectDir, enabled = false)
 
       val tasks = runTask(projectDir, "tasks", "--all")
       assertTrue(tasks.output.contains("generateTranslationResources"))
@@ -99,7 +112,7 @@ class GeneratedEnabledFunctionalTests
    fun non_kmp_module_still_gets_push_and_pull_without_extra_flag()
    {
       val projectDir = createTempDirectory("translationtools-non-kmp-tasks").toFile()
-      writeSyncOnlyBuildFiles(projectDir)
+      writeNonKmpBuildFiles(projectDir)
       writeStandardTestFixtures(projectDir)
 
       val result = runTask(projectDir, "tasks", "--all")
@@ -122,34 +135,6 @@ class GeneratedEnabledFunctionalTests
       assertTrue(!yaml.contains("enabled"))
    }
 
-   private fun writeSyncOnlyKmpFixtures(projectDir: File, enabled: Boolean?)
-   {
-      File(projectDir, "translationtools.yaml").writeText(
-         buildString {
-            appendLine("apiKey: test-key")
-            appendLine("defaultLocale: en")
-            appendLine("locales:")
-            appendLine("  - en")
-            appendLine("generated:")
-            if (enabled != null)
-               appendLine("  enabled: $enabled")
-            appendLine("  packageName: com.example.translations")
-            appendLine("androidResources:")
-            appendLine("  resourceDirectories:")
-            appendLine("    - src/androidMain/res")
-         },
-      )
-      File(projectDir, "src/androidMain/res/values").mkdirs()
-      File(projectDir, "src/androidMain/res/values/strings.xml").writeText(
-         """
-         <?xml version="1.0" encoding="utf-8"?>
-         <resources>
-            <string name="home_title">Home</string>
-         </resources>
-         """.trimIndent(),
-      )
-   }
-
    private fun writeCommonMainStub(projectDir: File)
    {
       File(projectDir, "src/commonMain/kotlin").mkdirs()
@@ -165,4 +150,14 @@ class GeneratedEnabledFunctionalTests
          .withPluginClasspath()
          .withArguments(*args)
          .build()
+
+   private fun runCompile(projectDir: File) =
+      try
+      {
+         runTask(projectDir, "compileKotlinJvm")
+      }
+      catch (failure: UnexpectedBuildFailure)
+      {
+         failure.buildResult
+      }
 }

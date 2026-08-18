@@ -1,16 +1,23 @@
 package io.mvdm.translationtools.gradle
 
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.Directory
+import org.gradle.api.provider.Provider
 
 class TranslationToolsPlugin : Plugin<Project>
 {
    override fun apply(project: Project)
    {
       val configFile = resolveConfigFile(project)
-      val resolvedConfig = project.provider { resolveConfig(project) }
+      val parsedConfig = readTranslationToolsConfig(project)
+      val projectDirectory = project.layout.projectDirectory
+      val apiKey = resolvedApiKey(project, parsedConfig, configFile.asFile.path)
+      // TestKit seam for local HTTP. Not a documented consumer setting.
       val baseUrl = project.providers.gradleProperty("translationtools.baseUrl").orElse(BASE_URL)
-      val generatedCodegenEnabled = isGeneratedCodegenEnabled(project)
+      val generatedCodegenEnabled = parsedConfig?.generated?.enabled ?: true
 
       project.tasks.register("initTranslationTools", InitTranslationToolsTask::class.java) { task ->
          task.group = "translationtools"
@@ -23,23 +30,25 @@ class TranslationToolsPlugin : Plugin<Project>
           task.description = "Generates Kotlin translation resources from local Android XML resources."
 
           val outputDir = project.layout.buildDirectory.dir("generated/source/translationtools/commonMain/kotlin")
-          val resourceDirectories = resolvedConfig.map { it.config.androidResources.resourceDirectories.map(project::file) }
-          val resourceFiles = resourceDirectories.map { directories ->
-             directories.flatMap { directory ->
-                directory.walkTopDown()
-                   .filter { file -> file.isFile && file.extension.equals("xml", ignoreCase = true) }
-                   .toList()
-             }
-          }
+          val defaultPackageName = inferDefaultGeneratedPackage(project)
 
-          task.resourceFiles.from(resourceFiles)
-          task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
-          task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
+          if (parsedConfig != null)
+          {
+             task.resourceFiles.from(
+                parsedConfig.androidResources.resourceDirectories.map { path ->
+                   projectDirectory.dir(path).asFileTree.matching { spec -> spec.include("**/*.xml") }
+                },
+             )
+             task.defaultLocale.set(parsedConfig.defaultLocale ?: "en")
+             task.keyOverrides.set(parsedConfig.androidResources.keyOverrides)
+             task.packageName.set(parsedConfig.generated?.packageName ?: defaultPackageName)
+          }
+          else
+          {
+             task.defaultLocale.set(missingConfigProvider(project, configFile.asFile.path))
+             task.packageName.set(missingConfigProvider(project, configFile.asFile.path))
+          }
           task.projectPathInput.set(project.path)
-          task.packageName.set(project.provider {
-             resolvedConfig.get().config.generated?.packageName
-                ?: inferDefaultGeneratedPackage(project)
-          })
           task.outputFile.set(
              outputDir.zip(task.packageName) { dir, packageName ->
                 dir.file("${packageName.replace('.', '/')}/$GENERATED_OBJECT_NAME.kt")
@@ -56,18 +65,12 @@ class TranslationToolsPlugin : Plugin<Project>
           task.group = "translationtools"
           task.description = "Pulls translations into local Android XML resources and regenerates Kotlin resources."
 
-           task.apiKey.set(resolvedConfig.flatMap { resolved ->
-              project.provider { resolved.config.apiKey ?: "" }
-           })
-           task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
-           task.resourceDirectories.from(resolvedConfig.map { resolved ->
-              resolved.config.androidResources.resourceDirectories.map(project::file)
-           })
-           task.appleResourceDirectories.from(resolvedConfig.map { resolved ->
-              (resolved.config.appleResources?.resourceDirectories ?: emptyList()).map(project::file)
-           })
-           task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
-           task.configuredLocales.set(resolvedConfig.map { it.config.locales })
+           task.apiKey.set(apiKey)
+           task.defaultLocale.set(parsedConfig?.defaultLocale ?: "en")
+           if (parsedConfig != null)
+              applyResourceDirectoryInputs(projectDirectory, parsedConfig, task.resourceDirectories, task.appleResourceDirectories)
+           task.keyOverrides.set(parsedConfig?.androidResources?.keyOverrides ?: emptyMap())
+           task.configuredLocales.set(parsedConfig?.locales ?: emptyList())
            task.projectPathInput.set(project.path)
            task.baseUrl.set(baseUrl)
            if (generatedCodegenEnabled)
@@ -78,21 +81,15 @@ class TranslationToolsPlugin : Plugin<Project>
          task.group = "translationtools"
          task.description = "Pushes local Android XML resources to TranslationTools."
 
-         task.apiKey.set(resolvedConfig.flatMap { resolved ->
-            project.provider { resolved.config.apiKey ?: "" }
-         })
-         task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
-         task.resourceDirectories.from(resolvedConfig.map { resolved ->
-            resolved.config.androidResources.resourceDirectories.map(project::file)
-         })
-         task.appleResourceDirectories.from(resolvedConfig.map { resolved ->
-            (resolved.config.appleResources?.resourceDirectories ?: emptyList()).map(project::file)
-         })
-         task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
+         task.apiKey.set(apiKey)
+         task.defaultLocale.set(parsedConfig?.defaultLocale ?: "en")
+         if (parsedConfig != null)
+            applyResourceDirectoryInputs(projectDirectory, parsedConfig, task.resourceDirectories, task.appleResourceDirectories)
+         task.keyOverrides.set(parsedConfig?.androidResources?.keyOverrides ?: emptyMap())
          task.prune.set(
             project.providers.gradleProperty("translationtools.prune")
                .map(String::toBoolean)
-               .orElse(resolvedConfig.map { it.config.androidResources.prune })
+               .orElse(parsedConfig?.androidResources?.prune ?: false)
          )
          task.projectPathInput.set(project.path)
          task.baseUrl.set(baseUrl)
@@ -106,13 +103,36 @@ class TranslationToolsPlugin : Plugin<Project>
    }
 }
 
-internal fun isGeneratedCodegenEnabled(project: Project): Boolean
+internal fun applyResourceDirectoryInputs(
+   projectDirectory: Directory,
+   config: TranslationToolsConfig,
+   resourceDirectories: ConfigurableFileCollection,
+   appleResourceDirectories: ConfigurableFileCollection,
+)
 {
-   val configFile = resolveConfigFile(project).asFile
-   if (!configFile.exists())
-      return true
-   return parseConfig(configFile).generated?.enabled ?: true
+   resourceDirectories.from(config.androidResources.resourceDirectories.map(projectDirectory::dir))
+   appleResourceDirectories.from(
+      (config.appleResources?.resourceDirectories ?: emptyList()).map(projectDirectory::dir),
+   )
 }
+
+private fun resolvedApiKey(project: Project, parsedConfig: TranslationToolsConfig?, configPath: String): Provider<String>
+{
+   val fromPropertyOrEnv = project.providers.gradleProperty("translationtools.apiKey")
+      .orElse(project.providers.environmentVariable("TRANSLATIONTOOLS_API_KEY"))
+   val yamlApiKey = parsedConfig?.apiKey
+   return when
+   {
+      yamlApiKey != null -> fromPropertyOrEnv.orElse(yamlApiKey)
+      parsedConfig != null -> fromPropertyOrEnv.orElse("")
+      else -> fromPropertyOrEnv.orElse(missingConfigProvider(project, configPath))
+   }
+}
+
+private fun missingConfigProvider(project: Project, configPath: String): Provider<String> =
+   project.provider {
+      throw GradleException("TranslationTools config file not found: $configPath. Run ./gradlew.bat initTranslationTools first.")
+   }
 
 private fun inferDefaultGeneratedPackage(project: Project): String
 {

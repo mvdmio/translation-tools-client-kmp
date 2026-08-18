@@ -15,22 +15,8 @@ class PushPullConfigurationCacheTests
    {
       MockTranslationToolsServer().use { server ->
          val projectDir = createTempDirectory("translationtools-push-cc").toFile()
-         writeSyncOnlyBuildFiles(projectDir)
-         writeStandardTestFixtures(projectDir)
-         File(projectDir, "translationtools.yaml").writeText(
-            """
-            apiKey: test-key
-            defaultLocale: en
-            locales:
-              - en
-            generated:
-              packageName: com.example.translations
-            androidResources:
-              resourceDirectories:
-                - src/androidMain/res
-              prune: true
-            """.trimIndent(),
-         )
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, prune = true)
 
          val first = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, first.task(":pushTranslations")?.outcome)
@@ -59,22 +45,8 @@ class PushPullConfigurationCacheTests
          ),
       ).use { server ->
          val projectDir = createTempDirectory("translationtools-pull-cc").toFile()
-         writeSyncOnlyBuildFiles(projectDir)
-         writeStandardTestFixtures(projectDir)
-         File(projectDir, "translationtools.yaml").writeText(
-            """
-            apiKey: test-key
-            defaultLocale: en
-            locales:
-              - en
-              - nl
-            generated:
-              packageName: com.example.translations
-            androidResources:
-              resourceDirectories:
-                - src/androidMain/res
-            """.trimIndent(),
-         )
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, locales = listOf("en", "nl"))
 
          val first = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, first.task(":pullTranslations")?.outcome)
@@ -96,28 +68,11 @@ class PushPullConfigurationCacheTests
          pushResponse = """{"receivedKeyCount":2,"createdKeyCount":2,"updatedKeyCount":0,"removedKeyCount":0}""",
       ).use { server ->
          val projectDir = createTempDirectory("translationtools-push-apple-cc").toFile()
-         writeSyncOnlyBuildFiles(projectDir)
-         writeStandardTestFixtures(projectDir)
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, prune = true, appleResourceDirectories = listOf("ios"))
          File(projectDir, "ios/en.lproj").mkdirs()
          File(projectDir, "ios/en.lproj/InfoPlist.strings").writeText(
             "\"NSCameraUsageDescription\" = \"Camera\";",
-         )
-         File(projectDir, "translationtools.yaml").writeText(
-            """
-            apiKey: test-key
-            defaultLocale: en
-            locales:
-              - en
-            generated:
-              packageName: com.example.translations
-            androidResources:
-              resourceDirectories:
-                - src/androidMain/res
-              prune: true
-            appleResources:
-              resourceDirectories:
-                - ios
-            """.trimIndent(),
          )
 
          val result = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
@@ -125,6 +80,26 @@ class PushPullConfigurationCacheTests
          assertTrue(server.pushBodies.isNotEmpty())
          assertTrue(server.pushBodies.last().contains("InfoPlist.strings"))
          assertTrue(server.pushBodies.last().contains("NSCameraUsageDescription"))
+      }
+   }
+
+   @Test
+   fun changing_translationtools_yaml_invalidates_configuration_cache()
+   {
+      MockTranslationToolsServer().use { server ->
+         val projectDir = createTempDirectory("translationtools-yaml-cc").toFile()
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, prune = true)
+
+         val first = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, first.task(":pushTranslations")?.outcome)
+
+         File(projectDir, "translationtools.yaml").appendText("\n# cache-bust\n")
+
+         val second = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, second.task(":pushTranslations")?.outcome)
+         assertTrue(second.output.contains("Calculating task graph"), second.output)
+         assertTrue(!second.output.contains("Reusing configuration cache."), second.output)
       }
    }
 
