@@ -1,6 +1,6 @@
 # Dependencies & CI/CD
 
-Versions are managed centrally in `gradle/libs.versions.toml`. Toolchain: Kotlin 2.3.21, AGP 8.5.2, Compose Multiplatform 1.11.1, JVM target 17, `compileSdk` 36 / `minSdk` 24.
+Versions are managed centrally in `gradle/libs.versions.toml`. Published artifacts: **3.0.0**. Toolchain: Kotlin 2.3.21, AGP 8.5.2, Compose Multiplatform 1.11.1, JVM target 17, `compileSdk` 36 / `minSdk` 24. Consumer floor for 3.0: Kotlin 2.3.21 + Ktor 3 (Ktor 2 apps stay on published 2.3.0).
 
 ## Runtime client (`translationtools-client-kmp`)
 

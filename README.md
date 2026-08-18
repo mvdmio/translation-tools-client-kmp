@@ -37,23 +37,22 @@ repositories {
 }
 ```
 
-Runtime client:
+Put the **3.0.0** runtime client on `commonMain`. Add the Compose helpers from the same
+release when you use composition locals / `stringResource`:
 
 ```kotlin
-dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-kmp:3.0.0")
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.0.0")
+            // optional
+            implementation("io.mvdm.translationtools:translationtools-client-compose:3.0.0")
+        }
+    }
 }
 ```
 
-Optional Compose helpers:
-
-```kotlin
-dependencies {
-    implementation("io.mvdm.translationtools:translationtools-client-compose:3.0.0")
-}
-```
-
-Version catalog:
+Version catalog (same pair):
 
 ```toml
 [libraries]
@@ -62,8 +61,13 @@ translationtools-client-compose = { module = "io.mvdm.translationtools:translati
 ```
 
 ```kotlin
-dependencies {
-    implementation(libs.translationtools.client.kmp)
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation(libs.translationtools.client.kmp)
+            implementation(libs.translationtools.client.compose)
+        }
+    }
 }
 ```
 
@@ -99,8 +103,11 @@ plugins {
 and 9.x. Consumer projects can use any Kotlin version from 1.9.25 through current 2.x
 releases.
 
-**Runtime client 3.0** needs **Ktor 3** and **Kotlin 2.3.21**. Apps still on Ktor 2
-should stay on published **2.3.0**.
+**3.0.0 floor:** the runtime client (and Compose helpers) need **Kotlin 2.3.21** and
+**Ktor 3** on the app classpath (compiled against Ktor 3.5.2; you still supply the HTTP
+engine). There is no maintained 2.x line — apps still on Ktor 2 stay on published
+**2.3.0**. The Gradle plugin keeps its own Ktor 2 client at build time and is not part of
+that runtime floor.
 
 ## How It Works
 
