@@ -11,10 +11,10 @@ repositories {
 
 dependencies {
    implementation(gradleApi())
-   implementation(libs.ktor.client.cio)
-   implementation(libs.ktor.client.content.negotiation)
-   implementation(libs.ktor.client.mock)
-   implementation(libs.ktor.serialization.kotlinx.json)
+   implementation(libs.ktor.plugin.client.cio)
+   implementation(libs.ktor.plugin.client.content.negotiation)
+   implementation(libs.ktor.plugin.client.mock)
+   implementation(libs.ktor.plugin.serialization.kotlinx.json)
    implementation(libs.kotlinx.serialization.json)
    implementation(libs.snakeyaml.engine)
    implementation(libs.kotlin.gradle.plugin)
