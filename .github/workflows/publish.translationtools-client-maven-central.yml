@@ -39,11 +39,33 @@ jobs:
       -  name: Setup Gradle cache
          uses: gradle/actions/setup-gradle@v4
 
-      -  name: Build and test KMP client
+      # klib cross-compilation is on by default since Kotlin 2.2.20; do not add
+      # kotlin.native.enableKlibCrossCompilation unless a future compiler requires it.
+      # Override ignoreDisabledTargets so skipped Apple targets cannot hide a missing klib.
+      -  name: Build, test, and compile iOS klibs
          env:
             ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
             ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-         run: ./gradlew compileDebugKotlinAndroid jvmTest
+         run: >
+            ./gradlew
+            compileDebugKotlinAndroid
+            jvmTest
+            compileKotlinIosArm64
+            compileKotlinIosX64
+            compileKotlinIosSimulatorArm64
+            :translationtools-client-compose:compileKotlinIosArm64
+            :translationtools-client-compose:compileKotlinIosSimulatorArm64
+            -Pkotlin.native.ignoreDisabledTargets=false
+
+      -  name: Verify iOS Maven variants locally
+         env:
+            ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+            ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+         run: |
+            ./gradlew verifyIosMavenVariants -Pkotlin.native.ignoreDisabledTargets=false
+            ./gradlew :jvmTest \
+              -DiosMavenCheckRepo="${GITHUB_WORKSPACE}/build/ios-maven-check" \
+              --tests io.mvdm.translationtools.client.IosMavenVariantPublishTests
 
       -  name: Publish package to Maven Central
          env:
@@ -53,4 +75,4 @@ jobs:
             ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSPHRASE }}
             ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
             ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-         run: ./gradlew publishAndReleaseToMavenCentral
+         run: ./gradlew publishAndReleaseToMavenCentral -Pkotlin.native.ignoreDisabledTargets=false

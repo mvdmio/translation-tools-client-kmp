@@ -44,6 +44,8 @@ Targets: Android, JVM, `iosArm64`, `iosSimulatorArm64` (Compose 1.11+ dropped `i
 
 - **Pipeline:** `.github/workflows/publish.translationtools-client-maven-central.yml`
 - **Triggers:** push to `master` (any path), or manual `workflow_dispatch`.
-- **Steps:** set up JDK 17 + Android SDK (`platforms;android-36`), build & test (`compileDebugKotlinAndroid jvmTest`), then `publishAndReleaseToMavenCentral`.
+- **Runner:** `ubuntu-22.04` (klib cross-compilation is default since Kotlin 2.2.20; no `enableKlibCrossCompilation` flag).
+- **Steps:** set up JDK 17 + Android SDK (`platforms;android-36`); `compileDebugKotlinAndroid jvmTest` plus iOS klib compiles (`compileKotlinIosArm64` / `IosX64` / `IosSimulatorArm64` on the client, `iosArm64` + `iosSimulatorArm64` on Compose) with `-Pkotlin.native.ignoreDisabledTargets=false`; `verifyIosMavenVariants` (local Maven check under `build/ios-maven-check`); then `publishAndReleaseToMavenCentral` (also depends on `verifyIosMavenVariants`).
+- **Fallback:** if Linux cannot produce an iOS klib (C interop), switch only this publish job to macOS — do not ship root modules that point at missing variants.
 - **Secrets:** `MAVEN_CENTRAL_USERNAME` / `_PASSWORD`, `MAVEN_SIGNING_KEY` / `_PASSPHRASE`.
 - License: **Proprietary** (set in the `mavenPublishing` POM blocks).

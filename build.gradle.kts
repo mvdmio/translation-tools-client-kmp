@@ -142,3 +142,55 @@ mavenPublishing {
       }
    }
 }
+
+val iosCheckRepo = layout.buildDirectory.dir("ios-maven-check")
+
+publishing {
+   repositories {
+      maven {
+         name = "IosCheck"
+         url = uri(iosCheckRepo)
+      }
+   }
+}
+
+tasks.register("verifyIosMavenVariants") {
+   group = "verification"
+   description =
+      "Publishes client + Compose to build/ios-maven-check and asserts iOS variant modules exist on disk."
+   dependsOn(
+      "publishAllPublicationsToIosCheckRepository",
+      ":translationtools-client-compose:publishAllPublicationsToIosCheckRepository",
+   )
+
+   val repoDir = iosCheckRepo
+   val projectVersion = provider { version.toString() }
+
+   doLast {
+      val root = repoDir.get().asFile
+      val resolvedVersion = projectVersion.get()
+      val required = listOf(
+         "translationtools-client-kmp-iosarm64",
+         "translationtools-client-kmp-iosx64",
+         "translationtools-client-kmp-iossimulatorarm64",
+         "translationtools-client-compose-iosarm64",
+         "translationtools-client-compose-iossimulatorarm64",
+      )
+      val missing = required.filter { artifactId ->
+         !root.resolve("io/mvdm/translationtools/$artifactId/$resolvedVersion/$artifactId-$resolvedVersion.klib").isFile
+      }
+      if (missing.isNotEmpty())
+      {
+         throw GradleException(
+            "Missing iOS Maven variant modules under ${root.absolutePath}: ${missing.joinToString()}. " +
+               "Compile iOS klibs with -Pkotlin.native.ignoreDisabledTargets=false before publish " +
+               "(kotlin.native.ignoreDisabledTargets must not hide a missing iOS output on the publish job). " +
+               "If Linux cannot produce these klibs because of C interop, switch only the publish job to a macOS runner.",
+         )
+      }
+   }
+}
+
+tasks.named("publishAndReleaseToMavenCentral").configure {
+   dependsOn("verifyIosMavenVariants")
+}

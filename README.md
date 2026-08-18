@@ -458,13 +458,16 @@ per-call binding shadows a global of the same name.
 
 If you use Compose, add `translationtools-client-compose` and provide the client through composition locals.
 
-Compose artifact targets:
+Runtime client (`translationtools-client-kmp`) publishes Android, JVM, and iOS variant
+modules (`iosArm64`, `iosX64`, `iosSimulatorArm64`). Compose helpers
+(`translationtools-client-compose`) publish Android, JVM, `iosArm64`, and
+`iosSimulatorArm64` (Compose Multiplatform 1.11+ dropped Apple x86_64 / `iosX64`).
 
-- `android`
-- `jvm`
-- `iosX64`
-- `iosArm64`
-- `iosSimulatorArm64`
+Publish stays on Ubuntu and uses Kotlin's default klib cross-compilation (on since
+2.2.20). CI compiles those iOS klibs and runs `verifyIosMavenVariants` before Maven
+Central; a missing variant fails the job. If Linux ever cannot produce a klib because of
+C interop, switch **only** the publish job to a macOS runner — do not leave metadata
+pointers without artifacts.
 
 ```kotlin
 import androidx.compose.runtime.CompositionLocalProvider
