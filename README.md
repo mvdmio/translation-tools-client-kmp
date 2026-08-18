@@ -99,6 +99,9 @@ plugins {
 and 9.x. Consumer projects can use any Kotlin version from 1.9.25 through current 2.x
 releases.
 
+**Runtime client 3.0** needs **Ktor 3** and **Kotlin 2.3.21**. Apps still on Ktor 2
+should stay on published **2.3.0**.
+
 ## How It Works
 
 1. You keep strings in `src/androidMain/res/values*/**/*.xml`.

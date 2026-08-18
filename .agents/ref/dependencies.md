@@ -8,7 +8,7 @@ Versions are managed centrally in `gradle/libs.versions.toml`. Toolchain: Kotlin
 |---------|---------|
 | `kotlinx-coroutines-core` | Coroutines / `Flow` (exposed as `api`) |
 | `okio` | Filesystem / snapshot persistence |
-| `ktor-client-core` | HTTP client for the remote API |
+| `ktor-client-core` (Ktor 3.5.2) | HTTP client for the remote API (consumer supplies the engine) |
 | `kotlinx-serialization-json` | JSON (de)serialization |
 
 Refresh timestamps use `kotlin.time.Instant` / `kotlin.time.Clock` from the stdlib (no `kotlinx-datetime` API dependency).
@@ -28,7 +28,7 @@ Targets: Android, JVM, `iosArm64`, `iosSimulatorArm64` (Compose 1.11+ dropped `i
 |---------|---------|
 | `kotlin-gradle-plugin` | Wiring generation into Kotlin compilation |
 | `snakeyaml-engine` | Parsing `translationtools.yaml` |
-| `ktor-client-*` | Push/pull HTTP against TranslationTools |
+| `ktor-client-*` (Ktor 2.3.12 via `ktor-plugin` aliases) | Push/pull HTTP against TranslationTools (build-time only) |
 
 ## Tests
 
