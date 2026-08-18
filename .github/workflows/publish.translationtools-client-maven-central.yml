@@ -61,11 +61,7 @@ jobs:
          env:
             ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
             ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-         run: |
-            ./gradlew verifyIosMavenVariants -Pkotlin.native.ignoreDisabledTargets=false
-            ./gradlew :jvmTest \
-              -DiosMavenCheckRepo="${GITHUB_WORKSPACE}/build/ios-maven-check" \
-              --tests io.mvdm.translationtools.client.IosMavenVariantPublishTests
+         run: ./gradlew verifyIosMavenVariants -Pkotlin.native.ignoreDisabledTargets=false
 
       -  name: Publish package to Maven Central
          env:

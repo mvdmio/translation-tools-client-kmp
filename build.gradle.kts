@@ -143,13 +143,24 @@ mavenPublishing {
    }
 }
 
-val iosCheckRepo = layout.buildDirectory.dir("ios-maven-check")
+val iosMavenCheckRepo = layout.buildDirectory.dir("ios-maven-check")
+val iosMavenCheckRequiredArtifactIds = listOf(
+   "translationtools-client-kmp-iosarm64",
+   "translationtools-client-kmp-iosx64",
+   "translationtools-client-kmp-iossimulatorarm64",
+   "translationtools-client-compose-iosarm64",
+   "translationtools-client-compose-iossimulatorarm64",
+)
 
-publishing {
-   repositories {
-      maven {
-         name = "IosCheck"
-         url = uri(iosCheckRepo)
+allprojects {
+   pluginManager.withPlugin("maven-publish") {
+      extensions.configure<org.gradle.api.publish.PublishingExtension> {
+         repositories {
+            maven {
+               name = "IosMavenCheck"
+               url = uri(iosMavenCheckRepo)
+            }
+         }
       }
    }
 }
@@ -159,23 +170,17 @@ tasks.register("verifyIosMavenVariants") {
    description =
       "Publishes client + Compose to build/ios-maven-check and asserts iOS variant modules exist on disk."
    dependsOn(
-      "publishAllPublicationsToIosCheckRepository",
-      ":translationtools-client-compose:publishAllPublicationsToIosCheckRepository",
+      "publishAllPublicationsToIosMavenCheckRepository",
+      ":translationtools-client-compose:publishAllPublicationsToIosMavenCheckRepository",
    )
 
-   val repoDir = iosCheckRepo
+   val repoDir = iosMavenCheckRepo
+   val required = iosMavenCheckRequiredArtifactIds
    val projectVersion = provider { version.toString() }
 
    doLast {
       val root = repoDir.get().asFile
       val resolvedVersion = projectVersion.get()
-      val required = listOf(
-         "translationtools-client-kmp-iosarm64",
-         "translationtools-client-kmp-iosx64",
-         "translationtools-client-kmp-iossimulatorarm64",
-         "translationtools-client-compose-iosarm64",
-         "translationtools-client-compose-iossimulatorarm64",
-      )
       val missing = required.filter { artifactId ->
          !root.resolve("io/mvdm/translationtools/$artifactId/$resolvedVersion/$artifactId-$resolvedVersion.klib").isFile
       }

@@ -109,12 +109,3 @@ mavenPublishing {
       }
    }
 }
-
-publishing {
-   repositories {
-      maven {
-         name = "IosCheck"
-         url = uri(rootProject.layout.buildDirectory.dir("ios-maven-check"))
-      }
-   }
-}
