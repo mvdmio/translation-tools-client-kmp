@@ -98,7 +98,7 @@ class TranslationToolsPluginFunctionalTests
    fun generateTranslationResources_should_work_with_kotlin_2()
    {
       val projectDir = createTempDirectory("translationtools-functional-k2").toFile()
-      writeBuildFiles(projectDir, kotlinVersion = "2.1.20")
+      writeBuildFiles(projectDir, kotlinVersion = "2.3.21")
       writeStandardTestFixtures(projectDir)
 
       val result = GradleRunner.create()

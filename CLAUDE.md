@@ -4,7 +4,7 @@ Kotlin Multiplatform client and Gradle plugin for TranslationTools — local And
 
 ## Essentials
 
-- **Build tool:** Gradle via the wrapper (`./gradlew.bat` on Windows, `sh ./gradlew` on POSIX). Composite build. Kotlin 2.1.20, KMP targeting Android, JVM, and iOS.
+- **Build tool:** Gradle via the wrapper (`./gradlew.bat` on Windows, `sh ./gradlew` on POSIX). Composite build. Kotlin 2.3.21, KMP targeting Android, JVM, and iOS.
 - **Build:** `./gradlew.bat build`
 - **Test:** `./gradlew.bat allTests` (or `jvmTest` for a faster JVM-only loop).
 - Before finishing any change, confirm it builds (`./gradlew.bat build`) then tests pass (`./gradlew.bat allTests`). Run `dotnet`-style steps **sequentially, never in parallel** — overlapping Gradle daemons cause file locks. If a build fails because a process is locking a file, kill the process.

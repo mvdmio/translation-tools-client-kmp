@@ -25,7 +25,7 @@ kotlin {
       }
    }
 
-   iosX64()
+   // Compose Multiplatform 1.11+ dropped Apple x86_64 (iosX64).
    iosArm64()
    iosSimulatorArm64()
 

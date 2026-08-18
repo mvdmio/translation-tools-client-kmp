@@ -1,6 +1,6 @@
 # Dependencies & CI/CD
 
-Versions are managed centrally in `gradle/libs.versions.toml`. Toolchain: Kotlin 2.1.20, AGP 8.5.2, JVM target 17, `compileSdk` 36 / `minSdk` 24.
+Versions are managed centrally in `gradle/libs.versions.toml`. Toolchain: Kotlin 2.3.21, AGP 8.5.2, Compose Multiplatform 1.11.1, JVM target 17, `compileSdk` 36 / `minSdk` 24.
 
 ## Runtime client (`translationtools-client-kmp`)
 
@@ -19,7 +19,7 @@ Versions are managed centrally in `gradle/libs.versions.toml`. Toolchain: Kotlin
 | `project(":")` | The root runtime client (exposed as `api`) |
 | `compose.runtime` | Composition locals + `stringResource` helpers |
 
-Targets: Android, JVM, `iosX64`, `iosArm64`, `iosSimulatorArm64`.
+Targets: Android, JVM, `iosArm64`, `iosSimulatorArm64` (Compose 1.11+ dropped `iosX64`). Root runtime client still declares `iosX64`.
 
 ## Gradle plugin (`gradle/translationtools-plugin`)
 
