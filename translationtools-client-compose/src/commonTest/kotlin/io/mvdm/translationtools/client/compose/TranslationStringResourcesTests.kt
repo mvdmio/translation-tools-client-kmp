@@ -9,10 +9,10 @@ import io.mvdm.translationtools.client.TranslationStringResource
 import io.mvdm.translationtools.client.TranslationToolsApi
 import io.mvdm.translationtools.client.TranslationToolsClient
 import io.mvdm.translationtools.client.TranslationToolsClientOptions
-import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Instant
 
 class TranslationStringResourcesTests
 {

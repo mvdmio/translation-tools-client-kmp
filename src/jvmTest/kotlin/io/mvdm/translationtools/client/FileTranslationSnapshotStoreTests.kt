@@ -1,13 +1,16 @@
 package io.mvdm.translationtools.client
 
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Instant
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.time.Instant
 
 class FileTranslationSnapshotStoreTests
 {
@@ -28,6 +31,57 @@ class FileTranslationSnapshotStoreTests
       val actual = store.load()
 
       assertEquals(expected, actual)
+   }
+
+   @Test
+   fun save_should_write_lastSuccessfulRefreshAt_as_iso8601_string() = runTest {
+      val fileSystem = FakeFileSystem()
+      val filePath = "/cache/translations.json".toPath()
+      val store = FileTranslationSnapshotStore(fileSystem, filePath.toString())
+
+      store.save(
+         StoredTranslations(
+            projectMetadata = null,
+            snapshots = emptyList(),
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+         )
+      )
+
+      val raw = fileSystem.read(filePath) { readUtf8() }
+      val timestamp = Json.parseToJsonElement(raw).jsonObject["lastSuccessfulRefreshAt"]!!.jsonPrimitive.content
+      assertEquals("2026-03-25T10:00:00Z", timestamp)
+   }
+
+   @Test
+   fun load_should_restore_timestamp_from_2x_iso8601_fixture() = runTest {
+      val fileSystem = FakeFileSystem()
+      val filePath = "/cache/translations.json".toPath()
+      fileSystem.createDirectories(filePath.parent!!)
+      fileSystem.write(filePath) {
+         writeUtf8(
+            """
+            {
+              "projectMetadata": {"locales":["en"],"defaultLocale":"en"},
+              "snapshots": [
+                {
+                  "locale": "en",
+                  "items": [
+                    {"ref":{"origin":":app:/strings.xml","key":"home_title"},"value":"Hello"}
+                  ]
+                }
+              ],
+              "lastSuccessfulRefreshAt": "2026-03-25T10:00:00Z",
+              "clientId": null
+            }
+            """.trimIndent()
+         )
+      }
+      val store = FileTranslationSnapshotStore(fileSystem, filePath.toString())
+
+      val actual = store.load()
+
+      assertEquals(Instant.parse("2026-03-25T10:00:00Z"), actual?.lastSuccessfulRefreshAt)
+      assertEquals("Hello", actual?.snapshots?.single()?.items?.single()?.value)
    }
 
    @Test

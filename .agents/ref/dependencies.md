@@ -7,10 +7,11 @@ Versions are managed centrally in `gradle/libs.versions.toml`. Toolchain: Kotlin
 | Package | Purpose |
 |---------|---------|
 | `kotlinx-coroutines-core` | Coroutines / `Flow` (exposed as `api`) |
-| `kotlinx-datetime` | Timestamps (exposed as `api`) |
 | `okio` | Filesystem / snapshot persistence |
 | `ktor-client-core` | HTTP client for the remote API |
 | `kotlinx-serialization-json` | JSON (de)serialization |
+
+Refresh timestamps use `kotlin.time.Instant` / `kotlin.time.Clock` from the stdlib (no `kotlinx-datetime` API dependency).
 
 ## Compose helpers (`translationtools-client-compose`)
 

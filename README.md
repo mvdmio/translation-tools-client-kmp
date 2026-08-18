@@ -404,7 +404,7 @@ client.observeRefreshState().collect { state ->
         TranslationRefreshStatus.Ready  -> hideOffline()
         else -> { /* Idle, RestoringCache, Refreshing */ }
     }
-    // state.lastSuccessfulRefreshAt is also available
+    // state.lastSuccessfulRefreshAt (kotlin.time.Instant?) is also available
 }
 ```
 

@@ -19,7 +19,7 @@ class RepositoryLayoutTests
    {
       val buildFile = File("translationtools-client-compose/build.gradle.kts").readText()
 
-      assertEquals(true, buildFile.contains("iosX64()"))
+      assertEquals(false, buildFile.contains("iosX64()"))
       assertEquals(true, buildFile.contains("iosArm64()"))
       assertEquals(true, buildFile.contains("iosSimulatorArm64()"))
    }

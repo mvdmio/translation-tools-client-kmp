@@ -62,7 +62,6 @@ kotlin {
 
       commonMain.dependencies {
          api(libs.kotlinx.coroutines.core)
-         api(libs.kotlinx.datetime)
          implementation(libs.okio)
          implementation(libs.ktor.client.core)
          implementation(libs.kotlinx.serialization.json)

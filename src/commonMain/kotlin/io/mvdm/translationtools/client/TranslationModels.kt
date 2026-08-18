@@ -1,7 +1,7 @@
 package io.mvdm.translationtools.client
 
-import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 @Serializable
 public data class ProjectMetadata(
