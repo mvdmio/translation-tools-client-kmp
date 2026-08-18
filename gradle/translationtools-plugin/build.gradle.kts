@@ -9,6 +9,11 @@ repositories {
    gradlePluginPortal()
 }
 
+val kotlinGradlePluginTestClasspath by configurations.creating {
+   isCanBeConsumed = false
+   isCanBeResolved = true
+}
+
 dependencies {
    implementation(gradleApi())
    implementation(libs.ktor.plugin.client.cio)
@@ -17,7 +22,8 @@ dependencies {
    implementation(libs.ktor.plugin.serialization.kotlinx.json)
    implementation(libs.kotlinx.serialization.json)
    implementation(libs.snakeyaml.engine)
-   implementation(libs.kotlin.gradle.plugin)
+   compileOnly(libs.kotlin.gradle.plugin)
+   kotlinGradlePluginTestClasspath(libs.kotlin.gradle.plugin)
 
    testImplementation(kotlin("test"))
    testImplementation(libs.kotlinx.coroutines.test)
@@ -31,6 +37,12 @@ gradlePlugin {
          implementationClass = "io.mvdm.translationtools.gradle.TranslationToolsPlugin"
       }
    }
+}
+
+// TestKit withPluginClasspath isolates the plugin classpath; include KGP so codegen wiring
+// can resolve KotlinMultiplatformExtension when tests apply KMP themselves.
+tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
+   pluginClasspath.from(kotlinGradlePluginTestClasspath)
 }
 
 tasks.test {

@@ -71,7 +71,11 @@ kotlin {
 }
 ```
 
-To generate `Translations.*`, your module also needs the `io.mvdm.translationtools.plugin` Gradle plugin. That plugin reads Android XML and generates the typed resource API used by this client.
+The `io.mvdm.translationtools.plugin` Gradle plugin syncs local Android XML (and optional
+Apple `.strings`) with TranslationTools. Apply it on the module that owns those resources.
+By default it also generates typed `Translations.*` for the runtime client; set
+`generated.enabled: false` when you only want push/pull on a KMP module (for example while
+you still read Compose `Res.string.*`).
 
 ### Gradle plugin setup (composite build)
 
@@ -99,6 +103,10 @@ plugins {
 }
 ```
 
+`includeBuild` does **not** put the Kotlin Gradle plugin on your build classpath — the
+plugin depends on it only at compile time. Your project supplies Kotlin Multiplatform (or
+skips it) itself.
+
 `pushTranslations` and `pullTranslations` are configuration-cache safe. Run them with
 configuration cache enabled (Gradle's default in many builds, or
 `--configuration-cache`); you do not need `--no-configuration-cache`.
@@ -124,7 +132,7 @@ that runtime floor.
 
 ## Quick Start
 
-### 1. Apply the plugin in the KMP module that owns your Android resources
+### 1. Apply the plugin in the module that owns your Android resources
 
 ```kotlin
 plugins {
@@ -134,7 +142,12 @@ plugins {
 }
 ```
 
-The runtime dependency alone does not generate resources.
+You can apply the plugin on that shared KMP module even if you only want sync today.
+Add `generated.enabled: false` under `generated:` in `translationtools.yaml` to skip
+`Translations.*` codegen wiring (Kotlin compile does not wait on generate; pull does not
+run generate afterwards). Omit the key or set `true` for the default generate-on-compile
+path. The runtime client dependency is only required when you compile against generated
+`Translations.*`.
 
 ### 2. Keep your strings in Android XML
 
@@ -515,19 +528,28 @@ Available Gradle tasks:
   the config value).
   Strings marked `translatable="false"` are local-only — never pushed.
 - `./gradlew.bat pullTranslations`
-  Downloads translations from TranslationTools, updates local XML (and Apple `.strings`), then regenerates Kotlin resources.
+  Downloads translations from TranslationTools and updates local XML (and Apple `.strings`).
+  When codegen is enabled (default), pull then regenerates Kotlin resources. With
+  `generated.enabled: false`, pull only writes resources — it does not run generate.
   Existing entries are updated in place; new keys are added. Keys not managed remotely are written back
   with `translatable="false"`.
 
-`generateTranslationResources` stays Android-only; it never reads Apple `.strings`.
+`generateTranslationResources` stays Android-only; it never reads Apple `.strings`. It
+remains registered when `generated.enabled` is `false`, so you can still run it by hand.
 
-Normal workflow:
+Normal workflow (codegen on — default):
 
 1. Edit `src/androidMain/res/values*/**/*.xml`.
 2. Build or run `generateTranslationResources`.
 3. Use `Translations.*` in shared or platform code.
 4. Run `pushTranslations` when local XML should become the remote state.
 5. Run `pullTranslations` when remote changes should be merged back into XML.
+
+Sync-only workflow (`generated.enabled: false` on the same module):
+
+1. Edit Android XML (and optional Apple `.strings`).
+2. Run `pushTranslations` / `pullTranslations` with configuration cache on as usual.
+3. Keep using your existing string reads until you adopt the runtime client and turn codegen back on.
 
 ## Apple `.strings` (iOS)
 
@@ -646,12 +668,18 @@ client.get(Translations.home_title)
 
 ## What You Need In Production
 
-For a complete production setup, make sure all of these are true:
+For a complete production setup with runtime refresh and typed accessors, make sure all of
+these are true:
 
 1. `translationtools-client-kmp` is in your dependencies.
 2. `io.mvdm.translationtools.plugin` is applied to the module with Android XML resources.
-3. `translationtools.yaml` exists in the project root.
+3. `translationtools.yaml` exists in the project root (`generated.enabled` omitted or `true`).
 4. Your default locale XML exists in `src/androidMain/res/values/`.
 5. Your app creates one `TranslationToolsClient` and calls `initialize()` at startup.
 6. Your app reads translations through `Translations.*`.
 7. You use `pushTranslations` and `pullTranslations` to sync local XML with TranslationTools.
+
+For sync-only on a KMP module (no `Translations.*` yet): apply the plugin on that module,
+set `generated.enabled: false`, keep composite-build install via `includeBuild`, and run
+push/pull with configuration cache enabled. You do not need a separate non-Kotlin module
+or `--no-configuration-cache`.
