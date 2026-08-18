@@ -4,11 +4,14 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.runBlocking
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.gradle.api.provider.ListProperty
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 
@@ -20,17 +23,25 @@ abstract class PushTranslationsTask : DefaultTask()
    @get:Input
    abstract val defaultLocale: Property<String>
 
-   @get:Input
-   abstract val resourceDirectories: ListProperty<String>
+   @get:InputFiles
+   @get:PathSensitive(PathSensitivity.RELATIVE)
+   abstract val resourceDirectories: ConfigurableFileCollection
 
-   @get:Input
-   abstract val appleResourceDirectories: ListProperty<String>
+   @get:InputFiles
+   @get:PathSensitive(PathSensitivity.RELATIVE)
+   abstract val appleResourceDirectories: ConfigurableFileCollection
 
    @get:Input
    abstract val keyOverrides: MapProperty<String, String>
 
    @get:Input
    abstract val prune: Property<Boolean>
+
+   @get:Input
+   abstract val projectPathInput: Property<String>
+
+   @get:Input
+   abstract val baseUrl: Property<String>
 
    @get:Internal
    internal var parser: AndroidStringResourceParser = AndroidStringResourceParser()
@@ -48,18 +59,20 @@ abstract class PushTranslationsTask : DefaultTask()
          ?: throw GradleException("TranslationTools API key is required. Set -Ptranslationtools.apiKey, TRANSLATIONTOOLS_API_KEY, or apiKey in translationtools.yaml.")
       val resolvedDefaultLocale = defaultLocale.orNull?.takeIf { it.isNotBlank() }
          ?: "en"
-      val directories = resourceDirectories.get().map(project::file).filter(File::exists).distinct()
+      val resolvedProjectPath = projectPathInput.get()
+      val resolvedBaseUrl = baseUrl.get()
+      val directories = resourceDirectories.files.filter(File::exists).distinct()
       if (directories.isEmpty())
          throw GradleException("No Android resource directories found. Configure translationtools.yaml androidResources.resourceDirectories.")
 
-      val appleDirectories = appleResourceDirectories.getOrElse(emptyList()).map(project::file).filter(File::exists).distinct()
+      val appleDirectories = appleResourceDirectories.files.filter(File::exists).distinct()
 
       runBlocking {
-         val state = parser.parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), project.path)
+         val state = parser.parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), resolvedProjectPath)
           state.warnings.forEach { warning -> logger.warn(warning) }
 
           val appleProject = if (appleDirectories.isNotEmpty())
-             appleParser.parse(appleDirectories, resolvedDefaultLocale, project.path).also { parsed ->
+             appleParser.parse(appleDirectories, resolvedDefaultLocale, resolvedProjectPath).also { parsed ->
                 parsed.warnings.forEach { warning -> logger.warn(warning) }
              }
           else
@@ -101,7 +114,7 @@ abstract class PushTranslationsTask : DefaultTask()
             }
             else {
                val locales = (state.locales + appleProject?.locales.orEmpty()).distinct().sorted()
-               val remote = pullTranslations(client, resolvedApiKey, locales)
+               val remote = pullTranslations(client, resolvedApiKey, locales, resolvedBaseUrl)
                mergeRemoteAndLocalPushItems(remote, localItems)
             }
 
@@ -111,6 +124,7 @@ abstract class PushTranslationsTask : DefaultTask()
                 request = TranslationPushRequest(
                    items = items,
                 ),
+                baseUrl = resolvedBaseUrl,
              )
 
             logger.lifecycle("Push complete. Synced ${response.receivedKeyCount} translation values.")

@@ -59,7 +59,7 @@ internal fun resolveConfigFile(project: Project): RegularFile
    return project.layout.projectDirectory.file(DEFAULT_CONFIG_FILE)
 }
 
-private fun parseConfig(file: File): TranslationToolsConfig
+internal fun parseConfig(file: File): TranslationToolsConfig
 {
    val settings = LoadSettings.builder().build()
    val loaded = Load(settings).loadFromInputStream(file.inputStream()) as? Map<*, *>

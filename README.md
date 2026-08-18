@@ -99,6 +99,10 @@ plugins {
 }
 ```
 
+`pushTranslations` and `pullTranslations` are configuration-cache safe. Run them with
+configuration cache enabled (Gradle's default in many builds, or
+`--configuration-cache`); you do not need `--no-configuration-cache`.
+
 **Compatibility:** the plugin is compiled with Kotlin 2.3.21 and works with Gradle 8.x
 and 9.x. Consumer projects can use any Kotlin version from 1.9.25 through current 2.x
 releases.

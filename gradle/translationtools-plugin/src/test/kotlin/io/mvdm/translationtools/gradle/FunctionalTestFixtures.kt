@@ -4,6 +4,38 @@ import java.io.File
 
 internal fun writeBuildFiles(projectDir: File, kotlinVersion: String = "1.9.25")
 {
+   writeSettingsFiles(projectDir)
+
+   File(projectDir, "build.gradle.kts").writeText(
+      """
+      plugins {
+         id("org.jetbrains.kotlin.multiplatform") version "$kotlinVersion"
+         id("io.mvdm.translationtools.plugin")
+      }
+
+      kotlin {
+         jvm()
+      }
+
+      """.trimIndent()
+   )
+}
+
+internal fun writeSyncOnlyBuildFiles(projectDir: File)
+{
+   writeSettingsFiles(projectDir)
+
+   File(projectDir, "build.gradle.kts").writeText(
+      """
+      plugins {
+         id("io.mvdm.translationtools.plugin")
+      }
+      """.trimIndent()
+   )
+}
+
+private fun writeSettingsFiles(projectDir: File)
+{
    File(projectDir, "settings.gradle.kts").writeText(
       """
       pluginManagement {
@@ -20,20 +52,6 @@ internal fun writeBuildFiles(projectDir: File, kotlinVersion: String = "1.9.25")
             mavenCentral()
          }
       }
-      """.trimIndent()
-   )
-
-   File(projectDir, "build.gradle.kts").writeText(
-      """
-      plugins {
-         id("org.jetbrains.kotlin.multiplatform") version "$kotlinVersion"
-         id("io.mvdm.translationtools.plugin")
-      }
-
-      kotlin {
-         jvm()
-      }
-
       """.trimIndent()
    )
 }

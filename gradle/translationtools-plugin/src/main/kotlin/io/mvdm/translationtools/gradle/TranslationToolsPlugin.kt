@@ -12,6 +12,7 @@ class TranslationToolsPlugin : Plugin<Project>
    {
       val configFile = resolveConfigFile(project)
       val resolvedConfig = project.provider { resolveConfig(project) }
+      val baseUrl = project.providers.gradleProperty("translationtools.baseUrl").orElse(BASE_URL)
 
       project.tasks.register("initTranslationTools", InitTranslationToolsTask::class.java) { task ->
          task.group = "translationtools"
@@ -61,10 +62,16 @@ class TranslationToolsPlugin : Plugin<Project>
               project.provider { resolved.config.apiKey ?: "" }
            })
            task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
-           task.resourceDirectories.set(resolvedConfig.map { it.config.androidResources.resourceDirectories })
-           task.appleResourceDirectories.set(resolvedConfig.map { it.config.appleResources?.resourceDirectories ?: emptyList() })
+           task.resourceDirectories.from(resolvedConfig.map { resolved ->
+              resolved.config.androidResources.resourceDirectories.map(project::file)
+           })
+           task.appleResourceDirectories.from(resolvedConfig.map { resolved ->
+              (resolved.config.appleResources?.resourceDirectories ?: emptyList()).map(project::file)
+           })
            task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
            task.configuredLocales.set(resolvedConfig.map { it.config.locales })
+           task.projectPathInput.set(project.path)
+           task.baseUrl.set(baseUrl)
              task.finalizedBy(generateTask)
           }
 
@@ -76,14 +83,20 @@ class TranslationToolsPlugin : Plugin<Project>
             project.provider { resolved.config.apiKey ?: "" }
          })
          task.defaultLocale.set(resolvedConfig.map { it.config.defaultLocale ?: "en" })
-         task.resourceDirectories.set(resolvedConfig.map { it.config.androidResources.resourceDirectories })
-         task.appleResourceDirectories.set(resolvedConfig.map { it.config.appleResources?.resourceDirectories ?: emptyList() })
+         task.resourceDirectories.from(resolvedConfig.map { resolved ->
+            resolved.config.androidResources.resourceDirectories.map(project::file)
+         })
+         task.appleResourceDirectories.from(resolvedConfig.map { resolved ->
+            (resolved.config.appleResources?.resourceDirectories ?: emptyList()).map(project::file)
+         })
          task.keyOverrides.set(resolvedConfig.map { it.config.androidResources.keyOverrides })
          task.prune.set(
             project.providers.gradleProperty("translationtools.prune")
                .map(String::toBoolean)
                .orElse(resolvedConfig.map { it.config.androidResources.prune })
          )
+         task.projectPathInput.set(project.path)
+         task.baseUrl.set(baseUrl)
       }
 
       project.plugins.withId("org.jetbrains.kotlin.multiplatform") {

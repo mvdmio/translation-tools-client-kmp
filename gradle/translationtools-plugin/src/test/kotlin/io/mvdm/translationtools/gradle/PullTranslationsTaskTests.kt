@@ -191,10 +191,12 @@ class PullTranslationsTaskTests
       val task = project.tasks.create("pullTranslations", PullTranslationsTask::class.java)
       task.apiKey.set("test-key")
       task.defaultLocale.set("en")
-      task.resourceDirectories.set(listOf("res"))
-      task.appleResourceDirectories.set(listOf("ios"))
+      task.resourceDirectories.from(File(projectDir, "res"))
+      task.appleResourceDirectories.from(File(projectDir, "ios"))
       task.keyOverrides.set(emptyMap())
       task.configuredLocales.set(listOf("en", "de"))
+      task.projectPathInput.set(project.path)
+      task.baseUrl.set(BASE_URL)
       task.httpClientFactory = { client }
 
       task.pull()

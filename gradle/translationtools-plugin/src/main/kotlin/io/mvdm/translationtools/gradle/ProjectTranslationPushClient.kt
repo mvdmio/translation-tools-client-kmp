@@ -44,10 +44,11 @@ internal suspend fun pushProjectTranslations(
    client: HttpClient,
    apiKey: String,
    request: TranslationPushRequest,
+   baseUrl: String = BASE_URL,
 ): TranslationPushResponse
 {
    return executePushRequest {
-      val body = client.post("$BASE_URL/api/v1/translations/project") {
+      val body = client.post("$baseUrl/api/v1/translations/project") {
          header(HttpHeaders.Authorization, apiKey)
          contentType(ContentType.Application.Json)
          setBody(pushJson.encodeToString(request))

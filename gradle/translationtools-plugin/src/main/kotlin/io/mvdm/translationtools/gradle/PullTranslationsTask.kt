@@ -17,11 +17,15 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 
@@ -33,17 +37,25 @@ abstract class PullTranslationsTask : DefaultTask()
    @get:Input
    abstract val defaultLocale: Property<String>
 
-   @get:Input
-   abstract val resourceDirectories: ListProperty<String>
+   @get:InputFiles
+   @get:PathSensitive(PathSensitivity.RELATIVE)
+   abstract val resourceDirectories: ConfigurableFileCollection
 
-   @get:Input
-   abstract val appleResourceDirectories: ListProperty<String>
+   @get:InputFiles
+   @get:PathSensitive(PathSensitivity.RELATIVE)
+   abstract val appleResourceDirectories: ConfigurableFileCollection
 
    @get:Input
    abstract val keyOverrides: MapProperty<String, String>
 
    @get:Input
    abstract val configuredLocales: ListProperty<String>
+
+   @get:Input
+   abstract val projectPathInput: Property<String>
+
+   @get:Input
+   abstract val baseUrl: Property<String>
 
    @get:Internal
    internal var httpClientFactory: () -> HttpClient = {
@@ -56,17 +68,19 @@ abstract class PullTranslationsTask : DefaultTask()
       val resolvedApiKey = apiKey.orNull?.takeIf { it.isNotBlank() }
          ?: throw GradleException("TranslationTools API key is required. Set -Ptranslationtools.apiKey, TRANSLATIONTOOLS_API_KEY, or apiKey in translationtools.yaml.")
       val resolvedDefaultLocale = defaultLocale.orNull?.takeIf { it.isNotBlank() } ?: "en"
-      val directories = resourceDirectories.get().map(project::file).filter(File::exists).distinct()
+      val resolvedProjectPath = projectPathInput.get()
+      val resolvedBaseUrl = baseUrl.get()
+      val directories = resourceDirectories.files.filter(File::exists).distinct()
       if (directories.isEmpty())
          throw GradleException("No Android resource directories found. Configure translationtools.yaml androidResources.resourceDirectories.")
 
-      val appleDirectories = appleResourceDirectories.getOrElse(emptyList()).map(project::file).filter(File::exists).distinct()
+      val appleDirectories = appleResourceDirectories.files.filter(File::exists).distinct()
 
       runBlocking {
          val client = httpClientFactory()
          try {
-            val remote = pullTranslations(client, resolvedApiKey, configuredLocales.get())
-            val local = AndroidStringResourceParser().parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), project.path)
+            val remote = pullTranslations(client, resolvedApiKey, configuredLocales.get(), resolvedBaseUrl)
+            val local = AndroidStringResourceParser().parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), resolvedProjectPath)
             local.warnings.forEach { warning -> logger.warn(warning) }
 
             val byOrigin = local.entries.groupBy { it.origin }
@@ -78,7 +92,7 @@ abstract class PullTranslationsTask : DefaultTask()
 
             val appleDiscovery = if (appleDirectories.isNotEmpty()) discoverAppleLocaleFiles(appleDirectories, resolvedDefaultLocale) else null
             appleDiscovery?.warnings?.forEach { warning -> logger.warn(warning) }
-            val appleOrigins = appleDiscovery?.files.orEmpty().map { buildOrigin(project.path, it.relativeBaseFile) }.toSet()
+            val appleOrigins = appleDiscovery?.files.orEmpty().map { buildOrigin(resolvedProjectPath, it.relativeBaseFile) }.toSet()
 
             remote.items.groupBy { it.origin }.forEach { (origin, entries) ->
                if (origin in appleOrigins)
@@ -124,7 +138,7 @@ abstract class PullTranslationsTask : DefaultTask()
             }
 
             if (appleDiscovery != null) {
-               writeAppleTranslations(appleDiscovery, appleDirectories, remote, appleOrigins, effectiveLocales, project.path)
+               writeAppleTranslations(appleDiscovery, appleDirectories, remote, appleOrigins, effectiveLocales, resolvedProjectPath)
             }
          }
          catch (exception: PullTranslationsException) {
@@ -182,16 +196,17 @@ internal suspend fun pullTranslations(
    client: HttpClient,
    apiKey: String,
    configuredLocales: List<String>,
+   baseUrl: String = BASE_URL,
 ): PulledTranslations
 {
-   val metadata = fetchProjectMetadata(client, apiKey)
+   val metadata = fetchProjectMetadata(client, apiKey, baseUrl)
    val locales = (listOfNotNull(metadata.defaultLocale) + configuredLocales + metadata.locales).distinct().sorted()
    if (locales.isEmpty())
       throw PullTranslationsException("TranslationTools project has no locales configured.")
 
    val itemsByOriginKey = linkedMapOf<Pair<String, String>, MutableMap<String, String?>>()
    locales.forEach { locale ->
-      fetchLocaleTranslations(client, apiKey, locale).forEach { item ->
+      fetchLocaleTranslations(client, apiKey, locale, baseUrl).forEach { item ->
          itemsByOriginKey.getOrPut(item.origin to item.key) { linkedMapOf() }[locale] = item.value
       }
    }
@@ -207,10 +222,14 @@ internal suspend fun pullTranslations(
    )
 }
 
-internal suspend fun fetchProjectMetadata(client: HttpClient, apiKey: String): ProjectMetadataResponse
+internal suspend fun fetchProjectMetadata(
+   client: HttpClient,
+   apiKey: String,
+   baseUrl: String = BASE_URL,
+): ProjectMetadataResponse
 {
    return executePullRequest("project metadata") {
-      val body = client.get("$BASE_URL/api/v1/translations/project") {
+      val body = client.get("$baseUrl/api/v1/translations/project") {
          header(HttpHeaders.Authorization, apiKey)
       }.requireSuccessBodyText()
 
@@ -222,10 +241,11 @@ private suspend fun fetchLocaleTranslations(
    client: HttpClient,
    apiKey: String,
    locale: String,
+   baseUrl: String,
 ): List<TranslationItemResponse>
 {
    return executePullRequest("locale '$locale'") {
-      val body = client.get("$BASE_URL/api/v1/translations/$locale") {
+      val body = client.get("$baseUrl/api/v1/translations/$locale") {
          header(HttpHeaders.Authorization, apiKey)
       }.requireSuccessBodyText()
 
