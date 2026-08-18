@@ -32,6 +32,14 @@ internal data class TranslationPushItemRequest(
    val value: String?,
 )
 
+internal data class TranslationPushItemKey(
+   val origin: String,
+   val locale: String,
+   val key: String,
+)
+
+internal fun TranslationPushItemRequest.itemKey() = TranslationPushItemKey(origin, locale, key)
+
 @Serializable
 internal data class TranslationPushResponse(
    val receivedKeyCount: Int,

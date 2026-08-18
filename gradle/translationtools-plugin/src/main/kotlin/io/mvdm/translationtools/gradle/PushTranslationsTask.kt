@@ -13,7 +13,6 @@ import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import java.io.File
 
 abstract class PushTranslationsTask : DefaultTask()
 {
@@ -55,24 +54,21 @@ abstract class PushTranslationsTask : DefaultTask()
    @TaskAction
    fun push()
    {
-      val resolvedApiKey = apiKey.orNull?.takeIf { it.isNotBlank() }
-         ?: throw GradleException("TranslationTools API key is required. Set -Ptranslationtools.apiKey, TRANSLATIONTOOLS_API_KEY, or apiKey in translationtools.yaml.")
-      val resolvedDefaultLocale = defaultLocale.orNull?.takeIf { it.isNotBlank() }
-         ?: "en"
-      val resolvedProjectPath = projectPathInput.get()
-      val resolvedBaseUrl = baseUrl.get()
-      val directories = resourceDirectories.files.filter(File::exists).distinct()
-      if (directories.isEmpty())
-         throw GradleException("No Android resource directories found. Configure translationtools.yaml androidResources.resourceDirectories.")
-
-      val appleDirectories = appleResourceDirectories.files.filter(File::exists).distinct()
+      val inputs = resolveSyncExecutionInputs(
+         apiKey,
+         defaultLocale,
+         projectPathInput,
+         baseUrl,
+         resourceDirectories,
+         appleResourceDirectories,
+      )
 
       runBlocking {
-         val state = parser.parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), resolvedProjectPath)
+         val state = parser.parse(inputs.androidDirectories, inputs.defaultLocale, keyOverrides.getOrElse(emptyMap()), inputs.projectPath)
           state.warnings.forEach { warning -> logger.warn(warning) }
 
-          val appleProject = if (appleDirectories.isNotEmpty())
-             appleParser.parse(appleDirectories, resolvedDefaultLocale, resolvedProjectPath).also { parsed ->
+          val appleProject = if (inputs.appleDirectories.isNotEmpty())
+             appleParser.parse(inputs.appleDirectories, inputs.defaultLocale, inputs.projectPath).also { parsed ->
                 parsed.warnings.forEach { warning -> logger.warn(warning) }
              }
           else
@@ -83,28 +79,10 @@ abstract class PushTranslationsTask : DefaultTask()
             val androidItems = state.entries
                .filter { it.managedRemotely }
                .sortedBy { it.origin + "|" + it.key }
-               .flatMap { entry ->
-                  entry.valuesByLocale.entries.map { (locale, value) ->
-                     TranslationPushItemRequest(
-                        origin = entry.origin,
-                        locale = locale,
-                        key = entry.key,
-                        value = value,
-                     )
-                  }
-               }
+               .flatMap { entry -> toPushItems(entry.origin, entry.key, entry.valuesByLocale) }
 
             val appleItems = appleProject?.entries.orEmpty()
-               .flatMap { entry ->
-                  entry.valuesByLocale.entries.map { (locale, value) ->
-                     TranslationPushItemRequest(
-                        origin = entry.origin,
-                        locale = locale,
-                        key = entry.key,
-                        value = value,
-                     )
-                  }
-               }
+               .flatMap { entry -> toPushItems(entry.origin, entry.key, entry.valuesByLocale) }
 
             val localItems = (androidItems + appleItems)
                .sortedWith(compareBy<TranslationPushItemRequest> { it.origin }.thenBy { it.locale }.thenBy { it.key })
@@ -114,17 +92,17 @@ abstract class PushTranslationsTask : DefaultTask()
             }
             else {
                val locales = (state.locales + appleProject?.locales.orEmpty()).distinct().sorted()
-               val remote = pullTranslations(client, resolvedApiKey, locales, resolvedBaseUrl)
+               val remote = pullTranslations(client, inputs.apiKey, locales, inputs.baseUrl)
                mergeRemoteAndLocalPushItems(remote, localItems)
             }
 
             val response = pushProjectTranslations(
                 client = client,
-                apiKey = resolvedApiKey,
+                apiKey = inputs.apiKey,
                 request = TranslationPushRequest(
                    items = items,
                 ),
-                baseUrl = resolvedBaseUrl,
+                baseUrl = inputs.baseUrl,
              )
 
             logger.lifecycle("Push complete. Synced ${response.receivedKeyCount} translation values.")
@@ -145,22 +123,32 @@ internal fun mergeRemoteAndLocalPushItems(
    localItems: List<TranslationPushItemRequest>,
 ): List<TranslationPushItemRequest>
 {
-   val merged = linkedMapOf<Triple<String, String, String>, TranslationPushItemRequest>()
+   val merged = linkedMapOf<TranslationPushItemKey, TranslationPushItemRequest>()
 
    remote.items.forEach { remoteItem ->
       remoteItem.valuesByLocale.forEach { (locale, value) ->
-         merged[Triple(remoteItem.origin, locale, remoteItem.key)] = TranslationPushItemRequest(
+         val item = TranslationPushItemRequest(
             origin = remoteItem.origin,
             locale = locale,
             key = remoteItem.key,
             value = value,
          )
+         merged[item.itemKey()] = item
       }
    }
 
    localItems.forEach { item ->
-      merged[Triple(item.origin, item.locale, item.key)] = item
+      merged[item.itemKey()] = item
    }
 
    return merged.values.sortedWith(compareBy<TranslationPushItemRequest> { it.origin }.thenBy { it.locale }.thenBy { it.key })
 }
+
+private fun toPushItems(
+   origin: String,
+   key: String,
+   valuesByLocale: Map<String, String?>,
+): List<TranslationPushItemRequest> =
+   valuesByLocale.entries.map { (locale, value) ->
+      TranslationPushItemRequest(origin = origin, locale = locale, key = key, value = value)
+   }

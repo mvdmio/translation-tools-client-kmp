@@ -65,34 +65,32 @@ abstract class PullTranslationsTask : DefaultTask()
    @TaskAction
    fun pull()
    {
-      val resolvedApiKey = apiKey.orNull?.takeIf { it.isNotBlank() }
-         ?: throw GradleException("TranslationTools API key is required. Set -Ptranslationtools.apiKey, TRANSLATIONTOOLS_API_KEY, or apiKey in translationtools.yaml.")
-      val resolvedDefaultLocale = defaultLocale.orNull?.takeIf { it.isNotBlank() } ?: "en"
-      val resolvedProjectPath = projectPathInput.get()
-      val resolvedBaseUrl = baseUrl.get()
-      val directories = resourceDirectories.files.filter(File::exists).distinct()
-      if (directories.isEmpty())
-         throw GradleException("No Android resource directories found. Configure translationtools.yaml androidResources.resourceDirectories.")
-
-      val appleDirectories = appleResourceDirectories.files.filter(File::exists).distinct()
+      val inputs = resolveSyncExecutionInputs(
+         apiKey,
+         defaultLocale,
+         projectPathInput,
+         baseUrl,
+         resourceDirectories,
+         appleResourceDirectories,
+      )
 
       runBlocking {
          val client = httpClientFactory()
          try {
-            val remote = pullTranslations(client, resolvedApiKey, configuredLocales.get(), resolvedBaseUrl)
-            val local = AndroidStringResourceParser().parse(directories, resolvedDefaultLocale, keyOverrides.getOrElse(emptyMap()), resolvedProjectPath)
+            val remote = pullTranslations(client, inputs.apiKey, configuredLocales.get(), inputs.baseUrl)
+            val local = AndroidStringResourceParser().parse(inputs.androidDirectories, inputs.defaultLocale, keyOverrides.getOrElse(emptyMap()), inputs.projectPath)
             local.warnings.forEach { warning -> logger.warn(warning) }
 
             val byOrigin = local.entries.groupBy { it.origin }
-            val discovery = discoverLocaleFiles(directories, resolvedDefaultLocale)
+            val discovery = discoverLocaleFiles(inputs.androidDirectories, inputs.defaultLocale)
             val filesByBase = discovery.files.groupBy { it.relativeBaseFile }
             val normalizedDefaultLocale = local.defaultLocale
             val locales = listOf(remote.project.defaultLocale) + remote.project.locales
             val effectiveLocales = locales.distinct().sorted()
 
-            val appleDiscovery = if (appleDirectories.isNotEmpty()) discoverAppleLocaleFiles(appleDirectories, resolvedDefaultLocale) else null
+            val appleDiscovery = if (inputs.appleDirectories.isNotEmpty()) discoverAppleLocaleFiles(inputs.appleDirectories, inputs.defaultLocale) else null
             appleDiscovery?.warnings?.forEach { warning -> logger.warn(warning) }
-            val appleOrigins = appleDiscovery?.files.orEmpty().map { buildOrigin(resolvedProjectPath, it.relativeBaseFile) }.toSet()
+            val appleOrigins = appleDiscovery?.files.orEmpty().map { buildOrigin(inputs.projectPath, it.relativeBaseFile) }.toSet()
 
             remote.items.groupBy { it.origin }.forEach { (origin, entries) ->
                if (origin in appleOrigins)
@@ -138,7 +136,7 @@ abstract class PullTranslationsTask : DefaultTask()
             }
 
             if (appleDiscovery != null) {
-               writeAppleTranslations(appleDiscovery, appleDirectories, remote, appleOrigins, effectiveLocales, resolvedProjectPath)
+               writeAppleTranslations(appleDiscovery, inputs.appleDirectories, remote, appleOrigins, effectiveLocales, inputs.projectPath)
             }
          }
          catch (exception: PullTranslationsException) {
