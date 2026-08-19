@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.0.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.1.0/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **3.0.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **3.1.0** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.0.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.1.0")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:3.0.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:3.1.0")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.0.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.0.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.1.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.1.0" }
 ```
 
 ```kotlin

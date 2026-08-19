@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-08-18: Plugin apply without workarounds
+## 2026-08-19: Plugin apply without workarounds
 
-You can apply the Gradle plugin on the module that owns your Android XML and run only push and pull. Set `generated.enabled: false` so Kotlin compile does not wait on `Translations.*` files. Push and pull work with Gradle configuration cache on, and `includeBuild` no longer puts the Kotlin Gradle plugin on your build classpath.
+Version 3.1.0 lets you apply the Gradle plugin on the module that owns your Android XML and run only push and pull. Set `generated.enabled: false` so Kotlin compile does not wait on `Translations.*` files. Push and pull work with Gradle configuration cache on, and `includeBuild` no longer puts the Kotlin Gradle plugin on your build classpath.
 
 ## 2026-08-18: Runtime client 3.0.0
 

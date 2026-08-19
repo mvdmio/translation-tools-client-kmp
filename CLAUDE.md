@@ -4,7 +4,7 @@ Kotlin Multiplatform client and Gradle plugin for TranslationTools — local And
 
 ## Essentials
 
-- **Build tool:** Gradle via the wrapper (`./gradlew.bat` on Windows, `sh ./gradlew` on POSIX). Composite build. Published **3.0.0**; Kotlin 2.3.21; runtime Ktor 3.5.2 (plugin stays Ktor 2.3.12). KMP targeting Android, JVM, and iOS.
+- **Build tool:** Gradle via the wrapper (`./gradlew.bat` on Windows, `sh ./gradlew` on POSIX). Composite build. Published **3.1.0**; Kotlin 2.3.21; runtime Ktor 3.5.2 (plugin stays Ktor 2.3.12). KMP targeting Android, JVM, and iOS.
 - **Build:** `./gradlew.bat build`
 - **Test:** `./gradlew.bat allTests` (or `jvmTest` for a faster JVM-only loop).
 - Compose module from repo root: `./gradlew.bat :translationtools-client-compose:build` or `./gradlew.bat :translationtools-client-compose:allTests`.
