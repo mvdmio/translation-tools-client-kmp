@@ -52,13 +52,9 @@ Read the relevant file before working in that area:
 
 ## Agent skills
 
-### Issue tracker
+### Tracker
 
-Issues live as markdown files under `.agents/issues/`. See `.agents/refs/issue-tracker.md`.
-
-### Triage labels
-
-Default vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `.agents/refs/triage-labels.md`.
+Issues live as GitHub Issues in `mvdmio/translation-tools-client-kmp`, statuses as labels. See `.agents/refs/tracker.md`.
 
 ### Domain docs
 
