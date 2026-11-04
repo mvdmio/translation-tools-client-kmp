@@ -583,6 +583,179 @@ class TranslationToolsClientTests
       assertTrue(api.globalsPushes.isEmpty())
    }
 
+   @Test
+   fun initialize_should_declare_bundled_keys_with_environment_and_values() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en", "nl"), defaultLocale = "en"),
+            snapshots = listOf(
+               TranslationSnapshot("nl", listOf(TranslationItem(homeTitleRef, "Hallo"), TranslationItem(checkoutTitleRef, null))),
+               TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Hello"), TranslationItem(checkoutTitleRef, "Checkout"))),
+            ),
+            lastSuccessfulRefreshAt = null,
+         ),
+         environment = " production ",
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      val (environment, items) = api.declarations.single()
+      assertEquals("production", environment)
+      assertEquals(
+         listOf(
+            TranslationDeclarationItem(checkoutTitleRef, "en", "Checkout"),
+            TranslationDeclarationItem(homeTitleRef, "en", "Hello"),
+            TranslationDeclarationItem(homeTitleRef, "nl", "Hallo"),
+         ),
+         items,
+      )
+   }
+
+   @Test
+   fun initialize_should_declare_key_without_value_in_default_locale() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en", "nl"), defaultLocale = "nl"),
+            snapshots = listOf(
+               TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Hello"), TranslationItem(checkoutTitleRef, ""))),
+               TranslationSnapshot("nl", listOf(TranslationItem(homeTitleRef, "Hallo"), TranslationItem(checkoutTitleRef, null))),
+            ),
+            lastSuccessfulRefreshAt = null,
+         ),
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      val (environment, items) = api.declarations.single()
+      assertNull(environment)
+      assertEquals(
+         listOf(
+            TranslationDeclarationItem(homeTitleRef, "en", "Hello"),
+            TranslationDeclarationItem(checkoutTitleRef, "nl", ""),
+            TranslationDeclarationItem(homeTitleRef, "nl", "Hallo"),
+         ),
+         items,
+      )
+   }
+
+   @Test
+   fun initialize_should_declare_key_without_value_in_en_when_bundled_snapshot_has_no_metadata() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = null,
+            snapshots = listOf(TranslationSnapshot("nl", listOf(TranslationItem(homeTitleRef, null)))),
+            lastSuccessfulRefreshAt = null,
+         ),
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertEquals(listOf(TranslationDeclarationItem(homeTitleRef, "en", "")), api.declarations.single().second)
+   }
+
+   @Test
+   fun initialize_should_declare_bundled_keys_when_stored_snapshot_is_restored() = runTest {
+      val store = FakeTranslationSnapshotStore(
+         stored = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(checkoutTitleRef, "Stored")))),
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+         )
+      )
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         store = store,
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Bundled")))),
+            lastSuccessfulRefreshAt = null,
+         ),
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertEquals(listOf(TranslationDeclarationItem(homeTitleRef, "en", "Bundled")), api.declarations.single().second)
+   }
+
+   @Test
+   fun initialize_should_not_declare_without_bundled_snapshot() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         localeItems = mapOf("en" to listOf(TranslationItem(homeTitleRef, "Fresh"))),
+      )
+      val client = createClient(api, backgroundScope = backgroundScope)
+
+      client.initialize()
+      runCurrent()
+
+      assertTrue(api.declarations.isEmpty())
+   }
+
+   @Test
+   fun initialize_should_not_declare_when_bundled_snapshot_has_no_keys() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = createClient(
+         api,
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+            snapshots = listOf(TranslationSnapshot("en", emptyList())),
+            lastSuccessfulRefreshAt = null,
+         ),
+         backgroundRefreshEnabled = false,
+         backgroundScope = backgroundScope,
+      )
+
+      client.initialize()
+      runCurrent()
+
+      assertTrue(api.declarations.isEmpty())
+   }
+
+   @Test
+   fun declaration_failure_should_not_fail_initialize_and_next_start_declares_again() = runTest {
+      val bundled = StoredTranslations(
+         projectMetadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         snapshots = listOf(TranslationSnapshot("en", listOf(TranslationItem(homeTitleRef, "Hello")))),
+         lastSuccessfulRefreshAt = null,
+      )
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),
+         declarationFailsFirst = true,
+      )
+
+      val first = createClient(api, bundledSnapshot = bundled, backgroundRefreshEnabled = false, backgroundScope = backgroundScope)
+      first.initialize()
+      runCurrent()
+      assertEquals("Hello", first.getCached(homeTitleRef, "en"))
+      assertEquals(1, api.declarations.size)
+
+      val second = createClient(api, bundledSnapshot = bundled, backgroundRefreshEnabled = false, backgroundScope = backgroundScope)
+      second.initialize()
+      runCurrent()
+
+      assertEquals(2, api.declarations.size)
+      assertEquals(listOf(TranslationDeclarationItem(homeTitleRef, "en", "Hello")), api.declarations.last().second)
+   }
+
    private fun createClient(
       api: FakeTranslationToolsApi,
       currentLocale: String? = "en",
@@ -641,6 +814,7 @@ private class FakeTranslationToolsApi(
    val singleItems: MutableMap<String, TranslationItem> = mutableMapOf(),
    private val onProjectMetadata: suspend () -> Unit = {},
    private val heartbeatFailsFirst: Boolean = false,
+   private val declarationFailsFirst: Boolean = false,
 ) : TranslationToolsApi
 {
    var projectRequests: Int = 0
@@ -649,6 +823,7 @@ private class FakeTranslationToolsApi(
    var heartbeatRequests = 0
    var lastHeartbeat: HeartbeatRecord? = null
    val globalsPushes = mutableListOf<Pair<String?, List<String>>>()
+   val declarations = mutableListOf<Pair<String?, List<TranslationDeclarationItem>>>()
 
    override suspend fun getProjectMetadata(): ProjectMetadata {
       projectRequests += 1
@@ -675,6 +850,12 @@ private class FakeTranslationToolsApi(
 
    override suspend fun pushGlobals(environment: String?, names: List<String>) {
       globalsPushes += environment to names
+   }
+
+   override suspend fun declareKeys(environment: String?, items: List<TranslationDeclarationItem>) {
+      declarations += environment to items
+      if (declarationFailsFirst && declarations.size == 1)
+         throw RuntimeException("declaration boom")
    }
 }
 

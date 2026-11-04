@@ -16,7 +16,7 @@ class PushPullConfigurationCacheTests
       MockTranslationToolsServer().use { server ->
          val projectDir = createTempDirectory("translationtools-push-cc").toFile()
          writeNonKmpBuildFiles(projectDir)
-         writeStandardTestFixtures(projectDir, prune = true)
+         writeStandardTestFixtures(projectDir)
 
          val first = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, first.task(":pushTranslations")?.outcome)
@@ -69,7 +69,7 @@ class PushPullConfigurationCacheTests
       ).use { server ->
          val projectDir = createTempDirectory("translationtools-push-apple-cc").toFile()
          writeNonKmpBuildFiles(projectDir)
-         writeStandardTestFixtures(projectDir, prune = true, appleResourceDirectories = listOf("ios"))
+         writeStandardTestFixtures(projectDir, appleResourceDirectories = listOf("ios"))
          File(projectDir, "ios/en.lproj").mkdirs()
          File(projectDir, "ios/en.lproj/InfoPlist.strings").writeText(
             "\"NSCameraUsageDescription\" = \"Camera\";",
@@ -89,7 +89,7 @@ class PushPullConfigurationCacheTests
       MockTranslationToolsServer().use { server ->
          val projectDir = createTempDirectory("translationtools-yaml-cc").toFile()
          writeNonKmpBuildFiles(projectDir)
-         writeStandardTestFixtures(projectDir, prune = true)
+         writeStandardTestFixtures(projectDir)
 
          val first = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, first.task(":pushTranslations")?.outcome)

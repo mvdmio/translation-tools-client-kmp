@@ -6,11 +6,15 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testfixtures.ProjectBuilder
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -52,7 +56,6 @@ class PushTranslationsTaskTests
       task.resourceDirectories.from(File(projectDir, "res"))
       task.appleResourceDirectories.from(File(projectDir, "ios"))
       task.keyOverrides.set(emptyMap())
-      task.prune.set(true)
       task.projectPathInput.set(project.path)
       task.baseUrl.set(BASE_URL)
       task.httpClientFactory = { client }
@@ -67,61 +70,44 @@ class PushTranslationsTaskTests
 
 
    @Test
-   fun mergeRemoteAndLocalPushItems_should_preserve_remote_only_items_when_not_pruning()
+   fun push_should_send_only_the_sorted_local_items_in_one_request_without_fetching()
    {
-      val remote = PulledTranslations(
-         project = PulledProject(defaultLocale = "en", locales = listOf("en")),
-         items = listOf(
-            PulledTranslationItem(
-               origin = ":app:/strings.xml",
-               key = "remote_only",
-               valuesByLocale = mapOf("en" to "Remote only"),
+      val projectDir = createTempDirectory("translationtools-push-local-only").toFile()
+      File(projectDir, "res/values").mkdirs()
+      File(projectDir, "res/values/strings.xml").writeText(
+         "<resources><string name=\"b_title\">Bee</string><string name=\"a_title\">Ay</string></resources>"
+      )
+
+      val requests = mutableListOf<Pair<HttpMethod, String>>()
+      var capturedBody = ""
+      val client = createHttpClient(
+         MockEngine { request ->
+            requests += request.method to request.url.encodedPath
+            capturedBody = (request.body as TextContent).text
+            respond(
+               content = """{"receivedKeyCount":2,"createdKeyCount":0,"updatedKeyCount":0,"removedKeyCount":0}""",
+               status = HttpStatusCode.OK,
+               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
             )
-         ),
+         }
       )
 
-      val local = listOf(
-         TranslationPushItemRequest(
-            origin = ":app:/strings.xml",
-            locale = "en",
-            key = "home_title",
-            value = "Home",
-         )
-      )
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
+      task.apiKey.set("test-key")
+      task.defaultLocale.set("en")
+      task.resourceDirectories.from(File(projectDir, "res"))
+      task.keyOverrides.set(emptyMap())
+      task.projectPathInput.set(project.path)
+      task.baseUrl.set(BASE_URL)
+      task.httpClientFactory = { client }
 
-      val merged = mergeRemoteAndLocalPushItems(remote, local)
+      task.push()
 
-      assertEquals(2, merged.size)
-      assertEquals(setOf("home_title", "remote_only"), merged.map { it.key }.toSet())
-   }
-
-   @Test
-   fun mergeRemoteAndLocalPushItems_should_prefer_local_values_for_same_origin_locale_and_key()
-   {
-      val remote = PulledTranslations(
-         project = PulledProject(defaultLocale = "en", locales = listOf("en")),
-         items = listOf(
-            PulledTranslationItem(
-               origin = ":app:/strings.xml",
-               key = "home_title",
-               valuesByLocale = mapOf("en" to "Old"),
-            )
-         ),
-      )
-
-      val local = listOf(
-         TranslationPushItemRequest(
-            origin = ":app:/strings.xml",
-            locale = "en",
-            key = "home_title",
-            value = "New",
-         )
-      )
-
-      val merged = mergeRemoteAndLocalPushItems(remote, local)
-
-      assertEquals(1, merged.size)
-      assertEquals("New", merged.single().value)
+      assertEquals(listOf(HttpMethod.Post to "/api/v1/translations/project"), requests)
+      val sentKeys = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+         .map { it.jsonObject.getValue("key").jsonPrimitive.content }
+      assertEquals(listOf("a_title", "b_title"), sentKeys)
    }
 }
 

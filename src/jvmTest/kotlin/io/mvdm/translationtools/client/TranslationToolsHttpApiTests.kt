@@ -282,6 +282,73 @@ class TranslationToolsHttpApiTests
       assertContains(capturedBody, "\"globals\":[]")
    }
 
+   @Test
+   fun declareKeys_should_post_items_and_trimmed_environment_with_auth() = runTest {
+      var capturedMethod: HttpMethod? = null
+      var capturedPath = ""
+      var capturedAuthorization = ""
+      var capturedContentType = ""
+      var capturedBody = ""
+      val engine = MockEngine { request ->
+         capturedMethod = request.method
+         capturedPath = request.url.fullPath
+         capturedAuthorization = request.headers[HttpHeaders.Authorization].orEmpty()
+         capturedBody = (request.body as TextContent).text
+         capturedContentType = request.body.contentType.toString()
+         respond(content = "", status = HttpStatusCode.OK)
+      }
+      val api = createApi(engine)
+
+      api.declareKeys(
+         " staging ",
+         listOf(
+            TranslationDeclarationItem(TranslationRef(":app:/strings.xml", "title"), "en", "Hello"),
+            TranslationDeclarationItem(TranslationRef(":app:/strings.xml", "empty"), "en", ""),
+         ),
+      )
+
+      assertEquals(HttpMethod.Post, capturedMethod)
+      assertEquals("/api/v1/translations/declaration", capturedPath)
+      assertEquals("test-api-key", capturedAuthorization)
+      assertContains(capturedContentType, "application/json")
+      assertEquals(
+         "{\"items\":[" +
+            "{\"origin\":\":app:/strings.xml\",\"locale\":\"en\",\"key\":\"title\",\"value\":\"Hello\"}," +
+            "{\"origin\":\":app:/strings.xml\",\"locale\":\"en\",\"key\":\"empty\",\"value\":\"\"}]," +
+            "\"environment\":\"staging\"}",
+         capturedBody,
+      )
+   }
+
+   @Test
+   fun declareKeys_should_omit_environment_when_unset_or_blank() = runTest {
+      val bodies = mutableListOf<String>()
+      val engine = MockEngine { request ->
+         bodies += (request.body as TextContent).text
+         respond(content = "", status = HttpStatusCode.OK)
+      }
+      val api = createApi(engine)
+      val items = listOf(TranslationDeclarationItem(TranslationRef(":app:/strings.xml", "title"), "en", "Hello"))
+
+      api.declareKeys(null, items)
+      api.declareKeys("   ", items)
+
+      val expected = "{\"items\":[{\"origin\":\":app:/strings.xml\",\"locale\":\"en\",\"key\":\"title\",\"value\":\"Hello\"}]}"
+      assertEquals(listOf(expected, expected), bodies)
+   }
+
+   @Test
+   fun declareKeys_should_throw_http_exception_on_non_success_response() = runTest {
+      val engine = MockEngine { respond(content = "nope", status = HttpStatusCode.InternalServerError) }
+      val api = createApi(engine)
+
+      val exception = assertFailsWith<TranslationToolsHttpException> {
+         api.declareKeys("staging", listOf(TranslationDeclarationItem(TranslationRef(":app:/strings.xml", "title"), "en", "Hello")))
+      }
+
+      assertEquals(500, exception.statusCode)
+   }
+
    private fun createApi(engine: MockEngine): TranslationToolsHttpApi
    {
       val client = HttpClient(engine)

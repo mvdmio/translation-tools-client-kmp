@@ -23,7 +23,6 @@ data class GeneratedConfig(
 data class AndroidResourcesConfig(
    val resourceDirectories: List<String>,
    val keyOverrides: Map<String, String>,
-   val prune: Boolean,
 )
 
 data class AppleResourcesConfig(
@@ -117,7 +116,6 @@ internal fun parseConfig(text: String, file: File): TranslationToolsConfig
        ?.entries
        ?.associate { (key, value) -> key.toString() to value.toString() }
        ?: emptyMap()
-    val prune = androidResources?.get("prune") as? Boolean ?: false
 
    val rawAppleResources = loaded["appleResources"]
    if (rawAppleResources != null && rawAppleResources !is Map<*, *>)
@@ -140,7 +138,6 @@ internal fun parseConfig(text: String, file: File): TranslationToolsConfig
        androidResources = AndroidResourcesConfig(
           resourceDirectories = resourceDirectories,
           keyOverrides = keyOverrides,
-          prune = prune,
        ),
        appleResources = appleResourcesConfig,
     )

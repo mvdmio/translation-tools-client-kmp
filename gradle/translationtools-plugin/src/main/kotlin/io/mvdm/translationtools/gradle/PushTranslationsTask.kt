@@ -34,9 +34,6 @@ abstract class PushTranslationsTask : DefaultTask()
    abstract val keyOverrides: MapProperty<String, String>
 
    @get:Input
-   abstract val prune: Property<Boolean>
-
-   @get:Input
    abstract val projectPathInput: Property<String>
 
    @get:Input
@@ -84,17 +81,8 @@ abstract class PushTranslationsTask : DefaultTask()
             val appleItems = appleProject?.entries.orEmpty()
                .flatMap { entry -> toPushItems(entry.origin, entry.key, entry.valuesByLocale) }
 
-            val localItems = (androidItems + appleItems)
+            val items = (androidItems + appleItems)
                .sortedWith(compareBy<TranslationPushItemRequest> { it.origin }.thenBy { it.locale }.thenBy { it.key })
-
-            val items = if (prune.getOrElse(false)) {
-               localItems
-            }
-            else {
-               val locales = (state.locales + appleProject?.locales.orEmpty()).distinct().sorted()
-               val remote = pullTranslations(client, inputs.apiKey, locales, inputs.baseUrl)
-               mergeRemoteAndLocalPushItems(remote, localItems)
-            }
 
             val response = pushProjectTranslations(
                 client = client,
@@ -116,32 +104,6 @@ abstract class PushTranslationsTask : DefaultTask()
          }
       }
    }
-}
-
-internal fun mergeRemoteAndLocalPushItems(
-   remote: PulledTranslations,
-   localItems: List<TranslationPushItemRequest>,
-): List<TranslationPushItemRequest>
-{
-   val merged = linkedMapOf<TranslationPushItemKey, TranslationPushItemRequest>()
-
-   remote.items.forEach { remoteItem ->
-      remoteItem.valuesByLocale.forEach { (locale, value) ->
-         val item = TranslationPushItemRequest(
-            origin = remoteItem.origin,
-            locale = locale,
-            key = remoteItem.key,
-            value = value,
-         )
-         merged[item.itemKey()] = item
-      }
-   }
-
-   localItems.forEach { item ->
-      merged[item.itemKey()] = item
-   }
-
-   return merged.values.sortedWith(compareBy<TranslationPushItemRequest> { it.origin }.thenBy { it.locale }.thenBy { it.key })
 }
 
 private fun toPushItems(

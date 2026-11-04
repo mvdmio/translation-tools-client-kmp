@@ -65,7 +65,6 @@ class TranslationToolsConfigTests
              - src/androidMain/res
            keyOverrides:
              action_save: action.save
-           prune: true
          """.trimIndent()
       )
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
@@ -73,7 +72,21 @@ class TranslationToolsConfigTests
 
       assertEquals(listOf("app/src/main/res", "src/androidMain/res"), resolved.config.androidResources.resourceDirectories)
       assertEquals(mapOf("action_save" to "action.save"), resolved.config.androidResources.keyOverrides)
-      assertEquals(true, resolved.config.androidResources.prune)
+   }
+
+   @Test
+   fun resolveConfig_should_ignore_a_leftover_prune_setting()
+   {
+      fun resolve(extraYaml: String): TranslationToolsConfig
+      {
+         val projectDir = createTempDirectory("translationtools-config").toFile()
+         File(projectDir, "translationtools.yaml").writeText(
+            "apiKey: yaml-key\nandroidResources:\n  resourceDirectories:\n    - app/src/main/res\n$extraYaml"
+         )
+         return resolveConfig(ProjectBuilder.builder().withProjectDir(projectDir).build()).config
+      }
+
+      assertEquals(resolve(""), resolve("  prune: true\n"))
    }
 
    @Test

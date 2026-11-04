@@ -70,7 +70,6 @@ private fun writeSettingsFiles(projectDir: File)
 internal fun writeStandardTestFixtures(
    projectDir: File,
    enabled: Boolean? = null,
-   prune: Boolean? = null,
    locales: List<String> = listOf("en"),
    appleResourceDirectories: List<String> = emptyList(),
 )
@@ -88,8 +87,6 @@ internal fun writeStandardTestFixtures(
          appendLine("androidResources:")
          appendLine("  resourceDirectories:")
          appendLine("    - src/androidMain/res")
-         if (prune != null)
-            appendLine("  prune: $prune")
          if (appleResourceDirectories.isNotEmpty())
          {
             appendLine("appleResources:")

@@ -86,11 +86,6 @@ class TranslationToolsPlugin : Plugin<Project>
          if (parsedConfig != null)
             applyResourceDirectoryInputs(projectDirectory, parsedConfig, task.resourceDirectories, task.appleResourceDirectories)
          task.keyOverrides.set(parsedConfig?.androidResources?.keyOverrides ?: emptyMap())
-         task.prune.set(
-            project.providers.gradleProperty("translationtools.prune")
-               .map(String::toBoolean)
-               .orElse(parsedConfig?.androidResources?.prune ?: false)
-         )
          task.projectPathInput.set(project.path)
          task.baseUrl.set(baseUrl)
       }

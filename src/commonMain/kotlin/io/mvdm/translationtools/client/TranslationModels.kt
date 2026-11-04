@@ -15,6 +15,16 @@ public data class TranslationItem(
    val value: String?,
 )
 
+/**
+ * One entry of a Declaration: the [value] the app holds for [ref] in [locale]. An empty [value]
+ * declares the Key without a value.
+ */
+public data class TranslationDeclarationItem(
+   val ref: TranslationRef,
+   val locale: String,
+   val value: String,
+)
+
 @Serializable
 public data class TranslationSnapshot(
    val locale: String,

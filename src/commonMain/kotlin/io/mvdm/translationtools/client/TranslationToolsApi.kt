@@ -21,4 +21,14 @@ public interface TranslationToolsApi
    public suspend fun pushGlobals(environment: String?, names: List<String>)
    {
    }
+
+   /**
+    * Declare the Keys the running app holds, under [environment]. The [items] carry values that fill
+    * only empty Translation Values on the server; an edit made in TranslationTools is never
+    * overwritten. Public API addition in 3.2.0; the default body does nothing, so existing
+    * implementers keep compiling.
+    */
+   public suspend fun declareKeys(environment: String?, items: List<TranslationDeclarationItem>)
+   {
+   }
 }

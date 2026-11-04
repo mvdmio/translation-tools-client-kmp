@@ -110,6 +110,23 @@ public class TranslationToolsHttpApi(
       }
    }
 
+   override suspend fun declareKeys(environment: String?, items: List<TranslationDeclarationItem>)
+   {
+      execute {
+         val body = DeclarationBody(
+            items = items.map { DeclarationItem(it.ref.origin, it.locale, it.ref.key, it.value) },
+            environment = environment?.trim()?.ifBlank { null },
+         )
+         val response = httpClient.post("$BASE_URL/api/v1/translations/declaration") {
+            addCommonHeaders()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(body))
+         }
+
+         response.requireSuccessBody()
+      }
+   }
+
    private fun normalizedEnvironment(): String? = environment?.trim()?.ifBlank { null }
 
    private fun io.ktor.client.request.HttpRequestBuilder.addCommonHeaders()
@@ -189,4 +206,18 @@ private data class ProjectGlobalsPushBody(
    val items: List<ProjectGlobalsPushItem>,
    val environment: String?,
    val globals: List<String>,
+)
+
+@Serializable
+private data class DeclarationItem(
+   val origin: String,
+   val locale: String,
+   val key: String,
+   val value: String,
+)
+
+@Serializable
+private data class DeclarationBody(
+   val items: List<DeclarationItem>,
+   val environment: String? = null,
 )

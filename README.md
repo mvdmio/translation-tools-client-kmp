@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.1.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.2.0/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **3.1.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **3.2.0** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.1.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.2.0")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:3.1.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:3.2.0")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.1.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.1.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.2.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.2.0" }
 ```
 
 ```kotlin
@@ -209,9 +209,6 @@ Config fields:
   `src/androidMain/res`.
 - `androidResources.keyOverrides` — rename an XML `name` to a different translation key, written as
   `xml-name: translation-key`. Applied consistently to generation and push/pull. Defaults to `{}`.
-- `androidResources.prune` — when `true`, `pushTranslations` deletes remote keys that no longer exist
-  locally (the remote becomes an exact mirror of local); `-Ptranslationtools.prune` overrides it.
-  Defaults to `false` (merge — remote-only keys are kept).
 - `appleResources.resourceDirectories` — optional; enables Apple `.strings` sync (see
   [Apple `.strings` (iOS)](#apple-strings-ios)).
 
@@ -405,14 +402,24 @@ Locale resolution order:
 | `currentLocaleProvider` | `() -> String?` | `{ null }` | Resolves the active locale per read (see locale resolution order above). |
 | `preferredLocales` | `Set<String>` | `emptySet()` | Limits which locales are downloaded on refresh. When empty, the client fetches `currentLocaleProvider()` + the project default. Set it to pre-fetch a fixed set. |
 | `snapshotStore` | `TranslationSnapshotStore` | no-op (no persistence) | Where refreshed translations are cached between launches. |
-| `bundledSnapshot` | `StoredTranslations?` | `null` | Generated `TranslationsBundledSnapshot.value`, used as offline fallback before the first refresh. |
+| `bundledSnapshot` | `StoredTranslations?` | `null` | Generated `TranslationsBundledSnapshot.value`, used as offline fallback before the first refresh. When set, `initialize()` also declares its Keys to TranslationTools (see [Declaring Keys at start](#declaring-keys-at-start)). |
 | `backgroundRefreshEnabled` | `Boolean` | `true` | Whether `initialize()` starts a background refresh after restoring the cache. Set `false` when no API key is available. |
 | `refreshInterval` | `Duration` | `1.hours` | Staleness window for `refreshIfStale()` and the background refresh. |
-| `environment` | `String?` | `null` | Scopes translations and global placeholders to a named server-side environment (e.g. `"production"`, `"staging"`). |
+| `environment` | `String?` | `null` | Scopes translations, global placeholders, and the start-up Key Declaration to a named server-side environment (e.g. `"production"`, `"staging"`). |
 | `heartbeatEnabled` | `Boolean` | `true` | Periodically reports this client (platform, version, environment) so active clients appear in the TranslationTools management UI. |
 | `heartbeatInterval` | `Duration` | `1.hours` | How often the heartbeat is sent. |
 | `globalPlaceholders` | `Map<String, () -> String?>` | `emptyMap()` | Ambient placeholder resolvers available to every key (see [Placeholders](#placeholders)). |
 | `throwOnPlaceholderError` | `Boolean` | `false` | Throw `PlaceholderSubstitutionException` on an unresolved placeholder instead of degrading to the raw token. |
+
+## Declaring Keys at start
+
+When `bundledSnapshot` is set, `initialize()` declares the Keys of that snapshot to TranslationTools in
+the background, under `environment`, next to the global placeholder push. This tells TranslationTools
+which Keys this build ships. The values travel with it but fill only empty Translation Values, so a
+value edited in TranslationTools is never overwritten. The Declaration never delays or fails
+`initialize()`: a failed one (for example with no network) is swallowed and sent again on the next
+start. With no `bundledSnapshot`, nothing is sent. The new `TranslationToolsApi.declareKeys` method has
+a no-op default body, so existing `TranslationToolsApi` implementations keep compiling.
 
 ## Refreshing translations
 
@@ -522,10 +529,11 @@ Available Gradle tasks:
   Generates `Translations.*` and `TranslationsBundledSnapshot` from local XML.
 - `./gradlew.bat pushTranslations`
   Uploads local XML — and, when `appleResources` is configured, Apple `.strings` — to TranslationTools.
-  By default this **merges**: remote keys you don't have locally are preserved. To make the remote
-  exactly match local (deleting remote-only keys), set `androidResources.prune: true` in
-  `translationtools.yaml`, or run with `-Ptranslationtools.prune=true` (the Gradle property overrides
-  the config value).
+  Sends only the local Keys and values, in one request; nothing is fetched from the server first.
+  A Key deleted from `strings.xml` is not removed by a push. It disappears from TranslationTools once
+  no running build of the app declares it for 7 days plus a 24-hour grace. While old and new app
+  versions both run, TranslationTools keeps the Keys of both. One module's push leaves another
+  module's Keys alone. A leftover `androidResources.prune` setting (or `-Ptranslationtools.prune`) is ignored.
   Strings marked `translatable="false"` are local-only — never pushed.
 - `./gradlew.bat pullTranslations`
   Downloads translations from TranslationTools and updates local XML (and Apple `.strings`).
@@ -542,7 +550,7 @@ Normal workflow (codegen on — default):
 1. Edit `src/androidMain/res/values*/**/*.xml`.
 2. Build or run `generateTranslationResources`.
 3. Use `Translations.*` in shared or platform code.
-4. Run `pushTranslations` when local XML should become the remote state.
+4. Run `pushTranslations` when local XML should be sent to TranslationTools.
 5. Run `pullTranslations` when remote changes should be merged back into XML.
 
 Sync-only workflow (`generated.enabled: false` on the same module):

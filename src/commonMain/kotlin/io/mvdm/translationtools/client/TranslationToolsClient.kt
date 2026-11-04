@@ -70,6 +70,7 @@ public class TranslationToolsClient(
       // once at startup (fire-and-forget, non-fatal) so the server full-replaces them. Empty items
       // leave keys untouched (the build-time CLI keys push owns those).
       pushGlobalsAtStartup()
+      declareKeysAtStartup()
 
       if (!restored) {
          try {
@@ -121,6 +122,29 @@ public class TranslationToolsClient(
          }
          catch (_: Exception) {
             // Best-effort startup declaration; a failed push is retried on the next app start.
+         }
+      }
+   }
+
+   // The bundled snapshot, not a restored stored one, is the Key set this build ships.
+   private fun declareKeysAtStartup()
+   {
+      val items = options.bundledSnapshot?.let(::declarationItems)
+      if (items.isNullOrEmpty())
+         return
+
+      backgroundScope.launch {
+         try {
+            api.declareKeys(
+               environment = options.environment?.trim()?.ifBlank { null },
+               items = items,
+            )
+         }
+         catch (e: CancellationException) {
+            throw e
+         }
+         catch (_: Exception) {
+            // Best-effort startup declaration; a failed Declaration is retried on the next app start.
          }
       }
    }
