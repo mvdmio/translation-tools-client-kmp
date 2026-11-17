@@ -489,6 +489,32 @@ per-call binding shadows a global of the same name.
 `getCached(...)` returns the raw value and does **not** substitute; use `get(...)` /
 `withPlaceholders(...)` to render placeholders.
 
+### Android format specifiers
+
+The runtime client fills only `{named}` placeholders. Android format specifiers such as `%1$s`,
+`%2$d` or `%s` are not substituted, so the app would show `Hello %1$s` as-is. Rewrite them as
+placeholders:
+
+```xml
+<!-- before -->
+<string name="greeting">Hello %1$s</string>
+
+<!-- after -->
+<string name="greeting">Hello {userName}</string>
+```
+
+```kotlin
+val greeting = client.get(Translations.greeting, placeholders = mapOf("userName" to "Sam")) // "Hello Sam"
+```
+
+Android's `getString(R.string.greeting, arg)` does **not** fill placeholders. A key still read through
+`R.string` must not be rewritten, or must move to the client in the same change. Otherwise that code
+shows the raw `{userName}`.
+
+`pushTranslations` warns about every key whose value, in any locale, holds an Android format
+specifier. The push still succeeds and sends the values unchanged. A literal percent written as `%%`
+does not trigger the warning.
+
 ## Compose
 
 If you use Compose, add `translationtools-client-compose` and provide the client through composition locals.

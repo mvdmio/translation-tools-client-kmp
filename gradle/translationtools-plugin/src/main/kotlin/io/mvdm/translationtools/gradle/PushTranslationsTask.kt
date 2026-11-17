@@ -63,6 +63,7 @@ abstract class PushTranslationsTask : DefaultTask()
       runBlocking {
          val state = parser.parse(inputs.androidDirectories, inputs.defaultLocale, keyOverrides.getOrElse(emptyMap()), inputs.projectPath)
           state.warnings.forEach { warning -> logger.warn(warning) }
+          androidFormatSpecifierWarnings(state.entries).forEach { warning -> logger.warn(warning) }
 
           val appleProject = if (inputs.appleDirectories.isNotEmpty())
              appleParser.parse(inputs.appleDirectories, inputs.defaultLocale, inputs.projectPath).also { parsed ->

@@ -16,10 +16,13 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.TaskOutcome
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PushTranslationsTaskTests
@@ -109,7 +112,114 @@ class PushTranslationsTaskTests
          .map { it.jsonObject.getValue("key").jsonPrimitive.content }
       assertEquals(listOf("a_title", "b_title"), sentKeys)
    }
+
+   @Test
+   fun push_should_warn_once_per_key_about_android_format_specifiers_and_send_values_unchanged()
+   {
+      MockTranslationToolsServer().use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """
+               <string name="greeting">Hello %1${'$'}s</string>
+               <string name="count">%1${'$'}s has %2${'$'}d items</string>
+            """.trimIndent(),
+            dutchStrings = """<string name="greeting">Hallo %1${'$'}s</string>""",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         assertEquals(
+            listOf(
+               "'count' in ':/strings.xml' contains Android format specifier '%1${'$'}s', '%2${'$'}d' (locales: en). $WARNING_ADVICE",
+               "'greeting' in ':/strings.xml' contains Android format specifier '%1${'$'}s' (locales: en, nl). $WARNING_ADVICE",
+            ),
+            result.output.lines().filter { it.contains("contains Android format specifier") },
+         )
+         val sentValues = Json.parseToJsonElement(server.pushBodies.single()).jsonObject.getValue("items").jsonArray
+            .associate {
+               val item = it.jsonObject
+               (item.getValue("key").jsonPrimitive.content + "/" + item.getValue("locale").jsonPrimitive.content) to
+                  item.getValue("value").jsonPrimitive.content
+            }
+         assertEquals("Hello %1${'$'}s", sentValues["greeting/en"])
+         assertEquals("Hallo %1${'$'}s", sentValues["greeting/nl"])
+         assertEquals("%1${'$'}s has %2${'$'}d items", sentValues["count/en"])
+      }
+   }
+
+   @Test
+   fun push_should_not_warn_about_placeholders_and_escaped_percent()
+   {
+      MockTranslationToolsServer().use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """
+               <string name="greeting">Hello {userName}</string>
+               <string name="sale">50%% off</string>
+            """.trimIndent(),
+            dutchStrings = """<string name="greeting">Hallo {userName}</string>""",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         assertFalse(result.output.contains("Android format specifier"), result.output)
+      }
+   }
+
+   @Test
+   fun push_should_not_warn_about_translatable_false_keys()
+   {
+      MockTranslationToolsServer().use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """<string name="build_label" translatable="false">Build %1${'$'}s</string>""",
+            dutchStrings = "",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         assertFalse(result.output.contains("Android format specifier"), result.output)
+      }
+   }
+
+   @Test
+   fun generateTranslationResources_should_not_warn_about_android_format_specifiers()
+   {
+      val projectDir = createFormatSpecifierProject(
+         defaultStrings = """<string name="greeting">Hello %1${'$'}s</string>""",
+         dutchStrings = """<string name="greeting">Hallo %1${'$'}s</string>""",
+      )
+
+      val result = runGradle(projectDir, "generateTranslationResources", "http://127.0.0.1:1")
+
+      assertEquals(TaskOutcome.SUCCESS, result.task(":generateTranslationResources")?.outcome)
+      assertFalse(result.output.contains("Android format specifier"), result.output)
+   }
 }
+
+private const val WARNING_ADVICE =
+   "The runtime client fills only {named} placeholders, so these show as-is when read through " +
+      "TranslationToolsClient. Replace them with a placeholder such as {name}."
+
+private fun createFormatSpecifierProject(defaultStrings: String, dutchStrings: String): File
+{
+   val projectDir = createTempDirectory("translationtools-format-specifier").toFile()
+   writeNonKmpBuildFiles(projectDir)
+   writeStandardTestFixtures(projectDir, locales = listOf("en", "nl"))
+   File(projectDir, "src/androidMain/res/values/strings.xml")
+      .writeText("<resources>\n$defaultStrings\n</resources>")
+   File(projectDir, "src/androidMain/res/values-nl").mkdirs()
+   File(projectDir, "src/androidMain/res/values-nl/strings.xml")
+      .writeText("<resources>\n$dutchStrings\n</resources>")
+   return projectDir
+}
+
+private fun runGradle(projectDir: File, taskName: String, baseUrl: String) =
+   GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withPluginClasspath()
+      .withArguments(taskName, "-Ptranslationtools.baseUrl=$baseUrl")
+      .build()
 
 private fun createHttpClient(engine: MockEngine): HttpClient
 {
