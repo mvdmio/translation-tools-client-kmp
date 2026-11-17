@@ -49,6 +49,11 @@ Together with the Plural, it is the substitution grammar TranslationTools, its c
 this client share.
 _Avoid_: token, parameter, format argument, variable.
 
+**Global placeholder**:
+A Placeholder whose value the app supplies once for every lookup, from app state, rather than at
+each call site. A value passed for the same name at the call site wins over it for that lookup.
+_Avoid_: ambient placeholder, context variable.
+
 **Plural**:
 A translation value that is one ICU plural argument wrapping the whole value, with a whole
 sentence per Plural form: `{count, plural, one {# item} other {# items}}`. The app passes a
