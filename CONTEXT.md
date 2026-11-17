@@ -45,8 +45,23 @@ available to Apple `.strings`, which the OS/app reads from the read-only signed 
 **Placeholder**:
 A named slot in a translation value, written as `{` + a camelCase name + `}` (for example
 `{userName}`), that the runtime client fills with a value when the app reads the string.
-It is the only substitution grammar TranslationTools, its clients, and this client share.
+Together with the Plural, it is the substitution grammar TranslationTools, its clients, and
+this client share.
 _Avoid_: token, parameter, format argument, variable.
+
+**Plural**:
+A translation value that is one ICU plural argument wrapping the whole value, with a whole
+sentence per Plural form: `{count, plural, one {# item} other {# items}}`. The app passes a
+whole number, and that number picks the form. A Key is a Plural when its default-locale value
+is one. Each Android `<plurals>` resource syncs as a Plural whose argument is `count`.
+_Avoid_: plural string, ICU message, quantity string.
+
+**Plural form**:
+One case of a Plural: a CLDR plural category (`zero`, `one`, `two`, `few`, `many`, `other`) or
+an exact number such as `=0`, together with the sentence shown for it. A `#` in the sentence
+prints the number. In a `<plurals>` resource, each `<item quantity="...">` is the form of that
+category.
+_Avoid_: branch, variant, quantity.
 
 **Android format specifier**:
 Android's own `String.format` slot syntax inside a `strings.xml` value, such as `%1$s`,
