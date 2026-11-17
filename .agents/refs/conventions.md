@@ -2,10 +2,7 @@
 
 ## General
 
-- Prefer small diffs over broad refactors.
-- Avoid speculative abstractions — add them when a second caller actually appears.
-- No backward-compat shims unless required by real consumers or persisted data. This library ships to Maven Central, so treat the public API (`io.mvdm.translationtools.client`) as a contract: preserve its shape unless the change is an intentional, called-out break.
-- Keep production files under roughly 500 lines when practical (test files may exceed this); split or refactor as needed.
+- This library ships to Maven Central, so treat the public API (`io.mvdm.translationtools.client`) as a contract: preserve its shape unless the change is an intentional, called-out break.
 
 ## Naming
 
