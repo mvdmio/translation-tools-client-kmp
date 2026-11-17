@@ -42,6 +42,18 @@ Fetching updated translations from TranslationTools after install and serving th
 without a new build. Available to shared KMP/Android code via the client; **not**
 available to Apple `.strings`, which the OS/app reads from the read-only signed bundle.
 
+**Placeholder**:
+A named slot in a translation value, written as `{` + a camelCase name + `}` (for example
+`{userName}`), that the runtime client fills with a value when the app reads the string.
+It is the only substitution grammar TranslationTools, its clients, and this client share.
+_Avoid_: token, parameter, format argument, variable.
+
+**Android format specifier**:
+Android's own `String.format` slot syntax inside a `strings.xml` value, such as `%1$s`,
+`%2$d`, or `%s`. Android's `getString(R.string.x, arg)` fills it. The runtime client does
+not, so to the client it is plain text.
+_Avoid_: positional placeholder, format string.
+
 ## Apple resources
 
 **Apple `.strings` file**:
