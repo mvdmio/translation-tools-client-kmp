@@ -9,3 +9,4 @@ The runtime client fills only Placeholders (`{userName}`) and treats Android for
 ## Consequences
 
 - A string in `strings.xml` that holds a Placeholder shows the raw `{name}` when Android code reads it with `getString(R.string.x, arg)`. The README treats `R.string` reads as the state before migration. Code that keeps reading a key through `R.string` keeps its Android format specifiers, and `pushTranslations` keeps warning about that key.
+- The rule holds inside an Android `<plurals>` item, which syncs as one Plural form. A developer writes `#` for the number and `{name}` for a Placeholder, not `%d` or `%1$s`. `pushTranslations` warns about an Android format specifier in a `<plurals>` item the same way it does for a `<string>`.
