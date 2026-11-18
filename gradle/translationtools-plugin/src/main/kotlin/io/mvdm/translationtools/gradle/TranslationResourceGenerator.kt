@@ -4,7 +4,7 @@ import java.security.MessageDigest
 
 private val invalidIdentifierChars = Regex("[^a-z0-9_]+")
 private val repeatedUnderscores = Regex("_+")
-private val kotlinKeywords = setOf(
+internal val kotlinKeywords = setOf(
    "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
    "interface", "is", "null", "object", "package", "return", "super", "this", "throw", "true",
    "try", "typealias", "val", "var", "when", "while",
@@ -38,6 +38,7 @@ internal const val GENERATED_OBJECT_NAME: String = "Translations"
 internal fun renderTranslationResources(
    project: AndroidTranslationProject,
    packageName: String,
+   placeholderGlobals: List<String>,
 ): String
 {
    val rawKeys = project.entries.map { it.resourceName }.distinct().sorted()
@@ -53,6 +54,7 @@ internal fun renderTranslationResources(
    val builder = StringBuilder()
    builder.appendLine("package $packageName")
    builder.appendLine()
+   builder.appendLine("import io.mvdm.translationtools.client.BoundTranslationStringResource")
    builder.appendLine("import io.mvdm.translationtools.client.TranslationRef")
    builder.appendLine("import io.mvdm.translationtools.client.TranslationStringResource")
    builder.appendLine()
@@ -61,7 +63,11 @@ internal fun renderTranslationResources(
    rawKeys.forEachIndexed { index, rawKey ->
       val entry = entriesByKey.getValue(rawKey)
       val fallback = entry.valuesByLocale[project.defaultLocale]
-      builder.appendLine("   public val ${resolvedNames.getValue(rawKey)}: TranslationStringResource =")
+      val name = resolvedNames.getValue(rawKey)
+      val signature = placeholderSignatureOf(fallback, placeholderGlobals.toSet())
+      val resourceName = if (signature == null) "public val $name" else "private val _$name"
+
+      builder.appendLine("   $resourceName: TranslationStringResource =")
       builder.appendLine("      TranslationStringResource(")
       builder.appendLine("         ref = TranslationRef(")
       builder.appendLine("            origin = ${entry.origin.asKotlinStringLiteral()},")
@@ -70,12 +76,43 @@ internal fun renderTranslationResources(
       builder.appendLine("         fallback = ${fallback.asKotlinStringLiteral()},")
       builder.appendLine("         managedRemotely = ${entry.managedRemotely},")
       builder.appendLine("      )")
+      if (signature != null) {
+         builder.appendLine()
+         builder.appendFunctions(name, signature)
+      }
+
       if (index != rawKeys.lastIndex)
          builder.appendLine()
    }
 
    builder.appendLine("}")
    return builder.toString()
+}
+
+/** Writes the function for [signature] over the private `_[name]` resource; a Plural also gets the `Int` overload. */
+private fun StringBuilder.appendFunctions(name: String, signature: PlaceholderSignature)
+{
+   val parameters = signature.placeholders.map { "${asKotlinIdentifier(it)}: String" }
+   val mapEntries = signature.placeholders.joinToString { "\"$it\" to ${asKotlinIdentifier(it)}" }
+   val placeholdersArgument = if (signature.placeholders.isEmpty()) "" else ", mapOf($mapEntries)"
+   val number = signature.pluralNumber?.let(::asKotlinIdentifier)
+
+   if (number == null) {
+      appendLine("   public fun $name(${parameters.joinToString()}): BoundTranslationStringResource =")
+      appendLine("      BoundTranslationStringResource(_$name$placeholdersArgument)")
+      return
+   }
+
+   val longParameters = (listOf("$number: Long") + parameters).joinToString()
+   val numberArgument = ", pluralNumber = $number"
+   appendLine("   public fun $name($longParameters): BoundTranslationStringResource =")
+   appendLine("      BoundTranslationStringResource(_$name$placeholdersArgument$numberArgument)")
+   appendLine()
+
+   val intParameters = (listOf("$number: Int") + parameters).joinToString()
+   val forwarded = (listOf("$number.toLong()") + signature.placeholders.map(::asKotlinIdentifier)).joinToString()
+   appendLine("   public fun $name($intParameters): BoundTranslationStringResource =")
+   appendLine("      $name($forwarded)")
 }
 
 private fun stableHashSuffix(rawKey: String): String

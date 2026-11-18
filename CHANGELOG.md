@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-18: Typed Placeholder functions (breaking)
+
+Version 4.0.0 turns every `Translations.*` Key that needs Placeholders into a generated function, so the build fails when a call leaves out, misspells, or nulls a Placeholder. **This is a breaking change.** After you regenerate, `Translations.greeting` is no longer a property for each Key whose default-locale value holds a Placeholder that is not a Global placeholder, and for each Plural. Code that reads the property stops compiling until it passes the values:
+
+```kotlin
+client.get(Translations.greeting(userName = "Sam"), "en")
+client.get(Translations.cart_items(count = 22, cartName = "Koszyk"), "pl")
+```
+
+- Each function takes one `String` parameter per Placeholder, in the order they first appear in the default-locale value. A Plural function takes the number first (named after the Plural's argument, `count` for a synced `<plurals>`, as a `Long` or an `Int`), then a parameter per Placeholder found in any form. A Placeholder named like a Kotlin hard keyword keeps its name and is written in backticks.
+- A Key with no Placeholder, with only Global placeholders, or with no default-locale value keeps its property.
+- New `placeholders.globals` in `translationtools.yaml` lists the Global placeholder names the app registers once in `globalPlaceholders`. Those names are never parameters. `generateTranslationResources` fails and names an entry that is not a valid Placeholder name.
+- `getCached`, `observe`, and the Compose `stringResource` take the value of a generated function and render its Placeholders and Plural; `get` does too. With a plain property they still return the raw value.
+- `withPlaceholders` and lookups by `TranslationRef` or by Origin and Key are unchanged, and still fill a Global placeholder you override for one lookup. A function's value exposes its `TranslationStringResource` as `.resource` for that.
+
 ## 2026-11-18: Apple .stringsdict plurals
 
 Version 3.4.0 syncs Apple `.stringsdict` plurals as Plurals. `pushTranslations` reads every `.stringsdict` file in the `.lproj` directories under `appleResources.resourceDirectories` and sends each entry whose format string is exactly one plural variable, such as `%#@items@`, as a Plural named after that variable, with the number's own specifier written as `#`. Each file is its own Origin (`:/Localizable.stringsdict`). Entries that cannot sync, and files that are not readable XML property lists, are skipped with a warning.

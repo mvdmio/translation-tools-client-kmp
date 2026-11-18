@@ -14,6 +14,7 @@ translationtools-client-kmp/
 │   │   ├── TranslationSnapshotStore.kt     # Persisted snapshot abstraction
 │   │   ├── TranslationRef.kt               # (origin, key) identity
 │   │   ├── TranslationModels.kt
+│   │   ├── BoundTranslationStringResource.kt # resource + Placeholder values + Plural number, rendered by get/getCached/observe
 │   │   ├── TranslationToolsExceptions.kt
 │   │   ├── Platform.kt                     # expect formatWholeNumber (actuals in androidMain/jvmMain)
 │   │   └── placeholders/                   # Placeholder + Plural rendering
@@ -33,7 +34,8 @@ translationtools-client-kmp/
 │       ├── PushTranslationsTask.kt / PullTranslationsTask.kt / InitTranslationToolsTask.kt
 │       ├── AndroidStringResourceParser.kt  # parses Android <string> and <plurals> XML
 │       ├── PluralValue.kt                  # <plurals> items <-> Plural value (same grammar as the runtime)
-│       ├── TranslationResourceGenerator.kt # emits Translations.*
+│       ├── PlaceholderSignature.kt         # Placeholder names of a default-locale value -> generated function parameters
+│       ├── TranslationResourceGenerator.kt # emits Translations.* (properties and Placeholder functions)
 │       └── BundledSnapshotGenerator.kt     # emits TranslationsBundledSnapshot
 ├── gradle/cldr/                            # plurals.json (CLDR data) + generateCldrPluralRules task script
 ├── .github/workflows/                      # CI/CD (Maven Central publish)

@@ -5,6 +5,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
@@ -27,6 +28,9 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
    abstract val keyOverrides: MapProperty<String, String>
 
    @get:Input
+   abstract val placeholderGlobals: ListProperty<String>
+
+   @get:Input
    abstract val projectPathInput: Property<String>
 
    @get:Input
@@ -41,6 +45,13 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
    @TaskAction
    fun generate()
    {
+      placeholderGlobals.get().firstOrNull { !PLACEHOLDER_NAME_REGEX.matches(it) }?.let {
+         throw GradleException(
+            "'placeholders.globals' in translationtools.yaml holds '$it', which is not a valid Placeholder name. " +
+               "A Placeholder name is a lowercase letter followed by letters and digits.",
+         )
+      }
+
       val files = resourceFiles.files.filter { it.exists() }
       if (files.isEmpty())
          throw GradleException("No Android XML string resources found. Add XML files under src/androidMain/res/values*/ or configure androidResources.resourceDirectories.")
@@ -51,7 +62,7 @@ abstract class GenerateTranslationResourcesTask : DefaultTask()
 
       parsed.warnings.forEach { logger.warn(it) }
 
-      val rendered = renderTranslationResources(parsed, packageName.get())
+      val rendered = renderTranslationResources(parsed, packageName.get(), placeholderGlobals.get())
       val output = outputFile.asFile.get()
       output.parentFile.mkdirs()
       if (!output.exists() || output.readText() != rendered)

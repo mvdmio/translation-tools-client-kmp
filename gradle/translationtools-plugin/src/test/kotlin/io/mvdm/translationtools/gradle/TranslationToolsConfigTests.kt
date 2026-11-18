@@ -292,4 +292,65 @@ class TranslationToolsConfigTests
       assertTrue(exception.message!!.contains("generated.objectName"))
       assertTrue(exception.message!!.contains("Translations"))
    }
+
+   private fun parsePlaceholders(placeholdersYaml: String): TranslationToolsConfig =
+      parseConfig("apiKey: yaml-key\n$placeholdersYaml", File("translationtools.yaml"))
+
+   @Test
+   fun parseConfig_should_read_placeholder_globals_in_order()
+   {
+      val config = parsePlaceholders("placeholders:\n  globals:\n    - appName\n    - brand\n    - appName2\n")
+
+      assertEquals(listOf("appName", "brand", "appName2"), config.placeholders.globals)
+   }
+
+   @Test
+   fun parseConfig_should_give_empty_globals_when_placeholders_is_missing()
+   {
+      assertEquals(emptyList(), parsePlaceholders("").placeholders.globals)
+   }
+
+   @Test
+   fun parseConfig_should_give_empty_globals_when_globals_is_missing()
+   {
+      assertEquals(emptyList(), parsePlaceholders("placeholders: {}\n").placeholders.globals)
+   }
+
+   @Test
+   fun parseConfig_should_accept_an_invalid_placeholder_name_in_globals()
+   {
+      val config = parsePlaceholders("placeholders:\n  globals: [AppName]\n")
+
+      assertEquals(listOf("AppName"), config.placeholders.globals)
+   }
+
+   @Test
+   fun parseConfig_should_reject_placeholders_that_is_not_a_map()
+   {
+      val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+         parsePlaceholders("placeholders: appName\n")
+      }
+
+      assertEquals("'placeholders' in translationtools.yaml must be a YAML map with a 'globals' list.", exception.message)
+   }
+
+   @Test
+   fun parseConfig_should_reject_globals_that_is_not_a_list()
+   {
+      val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+         parsePlaceholders("placeholders:\n  globals: appName\n")
+      }
+
+      assertEquals("'placeholders.globals' in translationtools.yaml must be a YAML list of strings.", exception.message)
+   }
+
+   @Test
+   fun parseConfig_should_reject_a_globals_entry_that_is_not_a_string()
+   {
+      val exception = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+         parsePlaceholders("placeholders:\n  globals:\n    - appName\n    - 42\n")
+      }
+
+      assertEquals("'placeholders.globals' in translationtools.yaml must be a YAML list of strings.", exception.message)
+   }
 }

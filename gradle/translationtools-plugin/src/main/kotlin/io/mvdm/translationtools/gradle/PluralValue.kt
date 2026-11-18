@@ -25,9 +25,10 @@ internal sealed interface PluralSelector
 
 /**
  * One case of a Plural value; [text] is the raw text between the form's braces and [numberHashes] the indexes in [text] of
- * each unquoted `#`, the places where the number stands (a quoted `'#'` is a literal and not listed).
+ * each unquoted `#`, the places where the number stands (a quoted `'#'` is a literal and not listed). [placeholders] are the
+ * distinct Placeholder names of the form in first-seen order; `{argument}` is the number and is not one.
  */
-internal data class PluralCase(val selector: PluralSelector, val text: String, val numberHashes: List<Int>)
+internal data class PluralCase(val selector: PluralSelector, val text: String, val numberHashes: List<Int>, val placeholders: List<String>)
 
 /** A whole-value Plural: the [argument] name and its [cases] in written order. */
 internal data class ParsedPlural(val argument: String, val cases: List<PluralCase>)
@@ -67,6 +68,8 @@ private class PluralValueReader(private val input: String)
 {
    private var i = 0
    private val numberHashes = mutableListOf<Int>()
+   private val placeholders = mutableListOf<String>()
+   private var argument = ""
 
    fun readPlural(): ParsedPlural?
    {
@@ -76,7 +79,7 @@ private class PluralValueReader(private val input: String)
       skipWhitespace()
       val argumentStart = i
       i = identifierEnd(i) ?: return null
-      val argument = input.substring(argumentStart, i)
+      argument = input.substring(argumentStart, i)
       skipWhitespace()
       if (!consume(',') || !skipWhitespaceThen("plural") || !consume(','))
          return null
@@ -97,10 +100,11 @@ private class PluralValueReader(private val input: String)
 
          val start = i
          numberHashes.clear()
+         placeholders.clear()
          if (!skipForm(start))
             return null
 
-         cases += PluralCase(selector, input.substring(start, i - 1), numberHashes.toList())
+         cases += PluralCase(selector, input.substring(start, i - 1), numberHashes.toList(), placeholders.toList())
       }
 
       return cases.takeIf { it.isNotEmpty() && i == input.length }?.let { ParsedPlural(argument, it) }
@@ -218,6 +222,10 @@ private class PluralValueReader(private val input: String)
       val close = input.indexOf('}', afterBrace)
       if (close < 0 || input.indexOf('{', afterBrace).let { it in 0 until close })
          return false
+
+      val name = input.substring(afterBrace, close)
+      if (PLACEHOLDER_NAME_REGEX.matches(name) && name != argument && name !in placeholders)
+         placeholders += name
 
       i = close + 1
       return true

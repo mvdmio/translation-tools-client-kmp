@@ -1109,6 +1109,110 @@ class TranslationToolsClientTests
       assertEquals(ENGLISH_CART, client.observe(cartRef, "en").first())
    }
 
+   private val greetingBound = BoundTranslationStringResource(cartResource, mapOf("userName" to "Sam"))
+
+   @Test
+   fun bound_placeholder_should_render_in_get_getCached_and_observe() = runTest {
+      val client = pluralClient("en" to "Hello {userName}!")
+
+      assertEquals("Hello Sam!", client.get(greetingBound, "en"))
+      assertEquals("Hello Sam!", client.getCached(greetingBound, "en"))
+      assertEquals("Hello Sam!", client.observe(greetingBound, "en").first())
+   }
+
+   @Test
+   fun bound_plural_should_render_in_get_getCached_and_observe() = runTest {
+      val client = pluralClient("en" to ENGLISH_CART, "pl" to POLISH_CART)
+      val english = BoundTranslationStringResource(cartResource, mapOf("cartName" to "Cart"), pluralNumber = 1)
+      val polish = BoundTranslationStringResource(cartResource, mapOf("cartName" to "Koszyk"), pluralNumber = 22)
+
+      assertEquals("1 item in Cart", client.get(english, "en"))
+      assertEquals("1 item in Cart", client.getCached(english, "en"))
+      assertEquals("1 item in Cart", client.observe(english, "en").first())
+      assertEquals("22 produkty w Koszyk", client.get(polish, "pl"))
+      assertEquals("22 produkty w Koszyk", client.getCached(polish, "pl"))
+      assertEquals("22 produkty w Koszyk", client.observe(polish, "pl").first())
+   }
+
+   @Test
+   fun bound_value_should_fill_a_global_placeholder_and_let_its_own_entry_shadow_it() = runTest {
+      val client = pluralClient("en" to "{appName} by {company}", globalPlaceholders = mapOf("appName" to { "Shop" }))
+      val bound = BoundTranslationStringResource(cartResource, mapOf("company" to "Acme"))
+      val shadowing = BoundTranslationStringResource(cartResource, mapOf("company" to "Acme", "appName" to "Other"))
+
+      assertEquals("Shop by Acme", client.get(bound, "en"))
+      assertEquals("Shop by Acme", client.getCached(bound, "en"))
+      assertEquals("Shop by Acme", client.observe(bound, "en").first())
+      assertEquals("Other by Acme", client.getCached(shadowing, "en"))
+   }
+
+   @Test
+   fun bound_value_that_misses_nothing_should_not_throw_when_configured() = runTest {
+      val client = pluralClient("en" to "Hello {userName}!", throwOnPlaceholderError = true)
+
+      assertEquals("Hello Sam!", client.get(greetingBound, "en"))
+      assertEquals("Hello Sam!", client.getCached(greetingBound, "en"))
+      assertEquals("Hello Sam!", client.observe(greetingBound, "en").first())
+   }
+
+   @Test
+   fun bound_value_that_misses_a_placeholder_should_throw_when_configured() = runTest {
+      val client = pluralClient("en" to "Hello {userName}!", throwOnPlaceholderError = true)
+      val missing = BoundTranslationStringResource(cartResource)
+
+      val fromGet = assertFailsWith<PlaceholderSubstitutionException> { client.get(missing, "en") }
+      val fromGetCached = assertFailsWith<PlaceholderSubstitutionException> { client.getCached(missing, "en") }
+      val fromObserve = assertFailsWith<PlaceholderSubstitutionException> { client.observe(missing, "en").first() }
+
+      assertEquals("No value supplied for placeholder '{userName}'.", fromGet.message)
+      assertEquals("No value supplied for placeholder '{userName}'.", fromGetCached.message)
+      assertEquals("No value supplied for placeholder '{userName}'.", fromObserve.message)
+   }
+
+   @Test
+   fun bound_getCached_and_observe_should_serve_the_fallback_by_default_locale_rules_without_a_request() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en", "ja"), defaultLocale = "en"))
+      val client = pluralClient("en" to ENGLISH_CART, api = api)
+      val missing = TranslationStringResource(TranslationRef(TEST_ORIGIN, "local_only"), fallback = ENGLISH_CART)
+      val bound = BoundTranslationStringResource(missing, mapOf("cartName" to "Cart"), pluralNumber = 1)
+
+      assertEquals("1 item in Cart", client.getCached(bound, "ja"))
+      assertEquals("1 item in Cart", client.observe(bound, "ja").first())
+      assertEquals(emptyList(), api.singleItemRequests)
+   }
+
+   @Test
+   fun bound_getCached_and_observe_should_serve_the_key_when_there_is_no_fallback() = runTest {
+      val client = pluralClient("en" to ENGLISH_CART)
+      val keyOnly = BoundTranslationStringResource(
+         TranslationStringResource(TranslationRef(TEST_ORIGIN, "local_key")),
+         mapOf("userName" to "Sam"),
+      )
+
+      assertEquals("local_key", client.getCached(keyOnly, "en"))
+      assertEquals("local_key", client.observe(keyOnly, "en").first())
+   }
+
+   @Test
+   fun bound_get_should_render_an_unmanaged_resource_without_a_request() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = pluralClient("en" to ENGLISH_CART, api = api)
+      val missing = TranslationStringResource(TranslationRef(TEST_ORIGIN, "local_only"), fallback = ENGLISH_CART, managedRemotely = false)
+
+      val rendered = client.get(BoundTranslationStringResource(missing, mapOf("cartName" to "Cart"), pluralNumber = 1), "en")
+
+      assertEquals("1 item in Cart", rendered)
+      assertEquals(emptyList(), api.singleItemRequests)
+   }
+
+   @Test
+   fun getCached_with_a_plain_resource_should_still_return_the_raw_value() = runTest {
+      val client = pluralClient("en" to "Hello {userName}!")
+
+      assertEquals("Hello {userName}!", client.getCached(cartResource, "en"))
+      assertEquals("Hello {userName}!", client.observe(cartResource, "en").first())
+   }
+
    private suspend fun pluralClient(
       vararg values: Pair<String, String?>,
       api: FakeTranslationToolsApi? = null,

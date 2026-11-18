@@ -75,8 +75,8 @@ class PluralValueTests
       assertEquals("items", plural?.argument)
       assertEquals(
          listOf(
-            PluralCase(PluralSelector.Category(PluralQuantity.ONE), "# of '#' and {cartName}: #", listOf(0, 25)),
-            PluralCase(PluralSelector.Category(PluralQuantity.OTHER), "''# items", listOf(2)),
+            PluralCase(PluralSelector.Category(PluralQuantity.ONE), "# of '#' and {cartName}: #", listOf(0, 25), listOf("cartName")),
+            PluralCase(PluralSelector.Category(PluralQuantity.OTHER), "''# items", listOf(2), emptyList()),
          ),
          plural?.cases,
       )
@@ -95,7 +95,16 @@ class PluralValueTests
          val expectedSelectors = if (expected is JsonNull) null
          else expected.jsonObject.getValue("cases").jsonArray.map { it.jsonObject.getValue("selector").jsonPrimitive.content }
 
-         val selectors = parsePluralValue(input)?.cases?.map {
+         val expectedForms = if (expected is JsonNull) null
+         else expected.jsonObject.getValue("cases").jsonArray.map { case ->
+            case.jsonObject.getValue("segments").jsonArray.mapNotNull { it.jsonObject["token"]?.jsonPrimitive?.content }.distinct()
+         }
+         val expectedArgument = if (expected is JsonNull) null else expected.jsonObject.getValue("argument").jsonPrimitive.content
+         val parsed = parsePluralValue(input)
+         assertEquals(expectedArgument, parsed?.argument, "argument of: $input")
+         assertEquals(expectedForms, parsed?.cases?.map { it.placeholders }, "placeholders of: $input")
+
+         val selectors = parsed?.cases?.map {
             when (val selector = it.selector) {
                is PluralSelector.Exact -> "=${selector.digits}"
                is PluralSelector.Category -> selector.quantity.keyword

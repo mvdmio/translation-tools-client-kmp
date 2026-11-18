@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.4.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.0/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **3.4.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.0.0** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.4.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.0")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:3.4.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.0")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.4.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.4.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.0" }
 ```
 
 ```kotlin
@@ -185,6 +185,10 @@ androidResources:
   resourceDirectories:
     - src/androidMain/res
   keyOverrides: {}
+# Optional — Placeholders the app supplies once through `globalPlaceholders`; they are not function parameters.
+# placeholders:
+#   globals:
+#     - appName
 # Optional — only if you also sync Apple .strings files (see "Apple .strings (iOS)").
 # appleResources:
 #   resourceDirectories:
@@ -209,6 +213,12 @@ Config fields:
   `src/androidMain/res`.
 - `androidResources.keyOverrides` — rename an XML `name` to a different translation key, written as
   `xml-name: translation-key`. Applied consistently to generation and push/pull. Defaults to `{}`.
+- `placeholders.globals` — optional list of Global placeholder names, such as `appName`. A Global placeholder is
+  never a parameter of a generated function, because the app supplies it once through `globalPlaceholders` in
+  the client options (see [Placeholders](#placeholders)). Every name listed must also be registered once in
+  `globalPlaceholders`; the plugin does not check that. Each name must be a valid Placeholder name (a lowercase
+  letter followed by letters and digits); `generateTranslationResources` fails and names an entry that is not.
+  Leaving the key out means no Global placeholders.
 - `appleResources.resourceDirectories` — optional; enables Apple `.strings` and `.stringsdict` sync (see
   [Apple `.strings` (iOS)](#apple-strings-ios)).
 
@@ -258,7 +268,9 @@ only use bundled fallback translations.
 
 This generates:
 
-- `Translations.*` for typed string access
+- `Translations.*` for typed string access: a property for a Key with no Placeholders, and a function for a Key
+  whose default-locale value needs Placeholders or is a Plural (see [Placeholders](#placeholders) and
+  [Plurals](#plurals))
 - `TranslationsBundledSnapshot` for bundled fallback data
 
 The plugin also wires generation into Kotlin compilation, so normal builds regenerate resources automatically.
@@ -385,6 +397,10 @@ Behavior:
 - `get(...)` returns cached value first and fetches from TranslationTools on cache miss
 - `observe(...)` exposes a `Flow` that updates when translations change
 
+`get`, `getCached`, and `observe` also take the value a generated function returns, such as
+`Translations.greeting(userName = "Sam")`. They then render the Placeholders and the Plural. With a
+plain `Translations.*` property, `getCached` and `observe` still return the raw value.
+
 Locale resolution order:
 
 1. explicit `locale` argument
@@ -450,22 +466,37 @@ client.observeRefreshState().collect { state ->
 
 Translation values may contain named **placeholders** as ICU-compatible tokens — `{` + a camelCase
 identifier + `}`, e.g. `Hello {userName}`. A literal brace is written with the ICU apostrophe escape
-(`'{'`). On KMP you bind placeholders with the string-keyed API (typed accessors are not generated for
-KMP yet); the value is substituted at read time.
+(`'{'`). The value is substituted at read time.
+
+A Key whose default-locale value holds a Placeholder gets a generated **function** instead of a property,
+with one `String` parameter per Placeholder, named as the Placeholder and in the order the Placeholders
+first appear. Leaving one out, misspelling its name, or passing `null` fails the build:
 
 ```kotlin
-// One-shot map:
-val greeting = client.get(Translations.greeting, placeholders = mapOf("userName" to "Sam"))
+// <string name="greeting">Hello {userName}!</string>
+val greeting = client.get(Translations.greeting(userName = "Sam"), "en") // "Hello Sam!"
+```
 
-// Or the fluent builder:
-val greeting2 = client.withPlaceholders(Translations.greeting)
+The required Placeholders come from the default-locale value only; a translation in another Locale never
+changes what a call must pass. Text such as `{0}` and `'{'braces'}'` is not a Placeholder. A Placeholder
+named like a Kotlin hard keyword, such as `{in}`, keeps its name and is written in backticks by name:
+`Translations.demo(`in` = "x")`; a soft keyword such as `{value}` needs none. A Key with no Placeholder, or
+only Global placeholders, keeps its property. The function's result also works with `getCached`, `observe`,
+and the Compose `stringResource` (see [Compose](#compose)).
+
+For a Key read by name at runtime, the fluent builder takes any value (and overrides a Global placeholder
+for one lookup):
+
+```kotlin
+val greeting2 = client.withPlaceholders(Translations.greeting(userName = "Sam").resource)
     .setPlaceholder("userName", "Sam")
     .render()
 ```
 
-**Global placeholders** are available to every key. Register them once in options as ambient resolvers
-(evaluated per render); their names are pushed to TranslationTools at startup so they appear in the
-management UI:
+**Global placeholders** are available to every key. List their names under `placeholders.globals` in
+`translationtools.yaml`, so no generated function asks for them, and register them once in options as
+ambient resolvers (evaluated per render); their names are pushed to TranslationTools at startup so they
+appear in the management UI:
 
 ```kotlin
 val client = TranslationTools.createClient(
@@ -486,8 +517,9 @@ or returns null): the default is **degrade** — render the raw `{token}`. Set
 `throwOnPlaceholderError = true` in options to throw a `PlaceholderSubstitutionException` instead. A
 per-call binding shadows a global of the same name.
 
-`getCached(...)` returns the raw value and does **not** substitute; use `get(...)` /
-`withPlaceholders(...)` to render placeholders.
+`getCached(...)` and `observe(...)` with a plain `Translations.*` property return the raw value and do
+**not** substitute; hand them the value of a generated function, or use `get(...)` / `withPlaceholders(...)`,
+to render placeholders.
 
 ### Android format specifiers
 
@@ -504,7 +536,7 @@ placeholders:
 ```
 
 ```kotlin
-val greeting = client.get(Translations.greeting, placeholders = mapOf("userName" to "Sam")) // "Hello Sam"
+val greeting = client.get(Translations.greeting(userName = "Sam"), "en") // "Hello Sam"
 ```
 
 Android's `getString(R.string.greeting, arg)` does **not** fill placeholders. A key still read through
@@ -533,11 +565,20 @@ An Android `<plurals>` resource holds the same thing:
 </plurals>
 ```
 
-Pass the number that picks the form with `setPluralNumber` (a `Long` or an `Int`), next to your
-placeholders:
+A Plural Key always gets a generated function. Its first parameter is the number, named after the Plural's
+argument (`count` for every Key synced from `<plurals>`) and taking a `Long` or an `Int`, then one `String`
+parameter per placeholder found in any form (a placeholder written only in `other` is still required).
+`{count}` inside a form prints the number and is not a parameter, and the number is a parameter even when
+a Global placeholder has the argument's name:
 
 ```kotlin
-val text = client.withPlaceholders(Translations.cart_items, "pl")
+val text = client.get(Translations.cart_items(count = 22, cartName = "Koszyk"), "pl") // "22 produkty w Koszyk"
+```
+
+For a Key read by name at runtime, pass the number with `setPluralNumber` next to your placeholders:
+
+```kotlin
+val text = client.withPlaceholders(Translations.cart_items(count = 22, cartName = "Koszyk").resource, "pl")
     .setPluralNumber(22)
     .setPlaceholder("cartName", "Koszyk")
     .render() // "22 produkty w Koszyk"
@@ -561,11 +602,13 @@ picked form are filled as usual, global placeholders included; a global placehol
 number. Write `#`, not `%d`: as with other placeholders the runtime client does not substitute
 Android format specifiers.
 
-When no number is supplied (for example `client.get(Translations.cart_items)`), the client renders the
+A Plural Key's function cannot leave the number out. When a lookup by `TranslationRef` or a
+`withPlaceholders(...)` call supplies no number, the client renders the
 `other` form, or the last form, with `#` left as `#`, and warns "No number supplied for the Plural in this
 value."; with `throwOnPlaceholderError = true` it throws `PlaceholderSubstitutionException` instead. A
-number supplied for a value that is not a Plural is ignored. `getCached(...)` and `observe(...)` return
-the raw Plural text.
+number supplied for a value that is not a Plural is ignored. `getCached(...)` and `observe(...)` with a
+plain `Translations.*` property or a `TranslationRef` return the raw Plural text; with the value of a
+generated function they render it.
 
 Builds of an app on an older client show the raw ICU text of a Plural. Put a Plural on a **new Key**,
 and keep the old Key for those builds.
@@ -619,8 +662,12 @@ CompositionLocalProvider(
     LocalTranslationToolsLocale provides "en",
 ) {
     val title = stringResource(Translations.home_title)
+    val greeting = stringResource(Translations.greeting(userName = "Sam"))
 }
 ```
+
+`stringResource` with the value of a generated function renders its Placeholders and Plural and updates
+when the translation changes.
 
 ## Sync Your XML With TranslationTools
 

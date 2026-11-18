@@ -13,6 +13,7 @@ data class TranslationToolsConfig(
    val generated: GeneratedConfig?,
    val androidResources: AndroidResourcesConfig,
    val appleResources: AppleResourcesConfig?,
+   val placeholders: PlaceholdersConfig = PlaceholdersConfig(),
 )
 
 data class GeneratedConfig(
@@ -23,6 +24,10 @@ data class GeneratedConfig(
 data class AndroidResourcesConfig(
    val resourceDirectories: List<String>,
    val keyOverrides: Map<String, String>,
+)
+
+data class PlaceholdersConfig(
+   val globals: List<String> = emptyList(),
 )
 
 data class AppleResourcesConfig(
@@ -130,6 +135,14 @@ internal fun parseConfig(text: String, file: File): TranslationToolsConfig
       )
    }
 
+   val rawPlaceholders = loaded["placeholders"]
+   if (rawPlaceholders != null && rawPlaceholders !is Map<*, *>)
+      throw org.gradle.api.GradleException("'placeholders' in ${file.path} must be a YAML map with a 'globals' list.")
+   val rawGlobals = (rawPlaceholders as? Map<*, *>)?.get("globals")
+   if (rawGlobals != null && (rawGlobals !is List<*> || rawGlobals.any { it !is String }))
+      throw org.gradle.api.GradleException("'placeholders.globals' in ${file.path} must be a YAML list of strings.")
+   val globals = (rawGlobals as? List<*>)?.map { it as String } ?: emptyList()
+
    return TranslationToolsConfig(
       apiKey = apiKey,
       defaultLocale = defaultLocale,
@@ -140,6 +153,7 @@ internal fun parseConfig(text: String, file: File): TranslationToolsConfig
           keyOverrides = keyOverrides,
        ),
        appleResources = appleResourcesConfig,
+       placeholders = PlaceholdersConfig(globals = globals),
     )
 }
 
@@ -157,3 +171,6 @@ internal fun renderDefaultConfig(): String
               - src/androidMain/res
           """.trimIndent() + System.lineSeparator()
 }
+
+/** A Placeholder name is a lowercase letter followed by letters and digits. */
+internal val PLACEHOLDER_NAME_REGEX = Regex("[a-z][a-zA-Z0-9]*")

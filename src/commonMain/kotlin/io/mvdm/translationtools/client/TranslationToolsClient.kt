@@ -323,8 +323,18 @@ public class TranslationToolsClient(
       if (resource.managedRemotely)
          return getRendered(resource.ref, locale, resource.fallback, placeholders, pluralNumber)
 
-      // Render the bundled value too so global placeholders/escapes resolve consistently with the
-      // remotely-managed path; getCached itself returns the raw value.
+      return renderCached(resource, locale, placeholders, pluralNumber)
+   }
+
+   // Render the bundled value too so global placeholders/escapes resolve consistently with the
+   // remotely-managed path; getCached itself returns the raw value.
+   private fun renderCached(
+      resource: TranslationStringResource,
+      locale: String?,
+      placeholders: Map<String, String?>,
+      pluralNumber: Long?,
+   ): String
+   {
       return renderOrFallback(
          getCached(resource.ref, locale),
          resolveLocale(locale),
@@ -332,6 +342,26 @@ public class TranslationToolsClient(
          placeholders,
          pluralNumber,
       )
+   }
+
+   /**
+    * Read [resource] and render it with its bound Placeholder values and Plural number, as
+    * [withPlaceholders] with the same values and number does. A resource that is not managed remotely
+    * makes no request to TranslationTools.
+    */
+   public suspend fun get(resource: BoundTranslationStringResource, locale: String? = null): String
+   {
+      return getRendered(resource.resource, locale, resource.placeholders, resource.pluralNumber)
+   }
+
+   /**
+    * Render the cached value of [resource], else its fallback, else its Key, with the bound Placeholder
+    * values and Plural number. Makes no request to TranslationTools. With `throwOnPlaceholderError` on, a
+    * substitution error throws, as it does from [get].
+    */
+   public fun getCached(resource: BoundTranslationStringResource, locale: String? = null): String
+   {
+      return renderCached(resource.resource, locale, resource.placeholders, resource.pluralNumber)
    }
 
    public fun observe(ref: TranslationRef, locale: String? = null): Flow<String?>
@@ -352,6 +382,26 @@ public class TranslationToolsClient(
    {
       return observe(resource.ref, locale)
          .map { it ?: resource.fallback ?: resource.ref.key }
+         .distinctUntilChanged()
+   }
+
+   /**
+    * Emit the rendered text of [resource] with its bound Placeholder values and Plural number, each
+    * time the translation changes: as [getCached] renders it. With `throwOnPlaceholderError` on, a
+    * substitution error fails the flow.
+    */
+   public fun observe(resource: BoundTranslationStringResource, locale: String? = null): Flow<String>
+   {
+      return observe(resource.resource.ref, locale)
+         .map {
+            renderOrFallback(
+               it,
+               resolveLocale(locale),
+               resource.resource.fallback ?: resource.resource.ref.key,
+               resource.placeholders,
+               resource.pluralNumber,
+            )
+         }
          .distinctUntilChanged()
    }
 

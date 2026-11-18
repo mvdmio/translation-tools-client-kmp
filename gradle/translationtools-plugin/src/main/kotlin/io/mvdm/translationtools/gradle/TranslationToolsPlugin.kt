@@ -41,6 +41,7 @@ class TranslationToolsPlugin : Plugin<Project>
              )
              task.defaultLocale.set(parsedConfig.defaultLocale ?: "en")
              task.keyOverrides.set(parsedConfig.androidResources.keyOverrides)
+             task.placeholderGlobals.set(parsedConfig.placeholders.globals)
              task.packageName.set(parsedConfig.generated?.packageName ?: defaultPackageName)
           }
           else

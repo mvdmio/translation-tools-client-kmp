@@ -1,5 +1,6 @@
 package io.mvdm.translationtools.client.compose
 
+import io.mvdm.translationtools.client.BoundTranslationStringResource
 import io.mvdm.translationtools.client.ProjectMetadata
 import io.mvdm.translationtools.client.StoredTranslations
 import io.mvdm.translationtools.client.TranslationItem
@@ -53,6 +54,16 @@ class TranslationStringResourcesTests
          "missing_key",
          initialStringResourceValue(client, TranslationStringResource(TranslationRef(TEST_ORIGIN, "missing_key")), "en"),
       )
+   }
+
+   @Test
+   fun initialStringResourceValue_should_render_a_bound_resource() = runTest {
+      val ref = TranslationRef(TEST_ORIGIN, "greeting")
+      val client = createClient(localeItems = listOf(TranslationItem(ref, "Hello {userName}!")))
+      client.initialize()
+      val bound = BoundTranslationStringResource(TranslationStringResource(ref), mapOf("userName" to "Sam"))
+
+      assertEquals("Hello Sam!", initialStringResourceValue(client, bound, "en"))
    }
 }
 
