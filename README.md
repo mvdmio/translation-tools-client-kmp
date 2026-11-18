@@ -13,10 +13,10 @@ Use it when you want all of this at once:
 
 Current scope:
 
-- supports Android XML `<string>` resources
+- supports Android XML `<string>` and `<plurals>` resources
 - generates `Translations.*` and `TranslationsBundledSnapshot`
 - supports Android, JVM, and iOS consumers through the KMP client
-- skips `<plurals>` and `<string-array>`
+- skips `<string-array>`
 - optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`) as a
   second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
   no generated `Translations.*` accessors and no runtime refresh (see [Apple `.strings` (iOS)](#apple-strings-ios))
@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.2.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.3.0/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **3.2.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **3.3.0** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.2.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.3.0")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:3.2.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:3.3.0")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.2.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.2.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.3.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.3.0" }
 ```
 
 ```kotlin
@@ -515,6 +515,83 @@ shows the raw `{userName}`.
 specifier. The push still succeeds and sends the values unchanged. A literal percent written as `%%`
 does not trigger the warning.
 
+## Plurals
+
+A **Plural** is a translation value with one whole sentence per plural form of its Locale, written as
+an ICU `plural` value:
+
+```
+{count, plural, one {# item in {cartName}} other {# items in {cartName}}}
+```
+
+An Android `<plurals>` resource holds the same thing:
+
+```xml
+<plurals name="cart_items">
+    <item quantity="one"># item in {cartName}</item>
+    <item quantity="other"># items in {cartName}</item>
+</plurals>
+```
+
+Pass the number that picks the form with `setPluralNumber` (a `Long` or an `Int`), next to your
+placeholders:
+
+```kotlin
+val text = client.withPlaceholders(Translations.cart_items, "pl")
+    .setPluralNumber(22)
+    .setPlaceholder("cartName", "Koszyk")
+    .render() // "22 produkty w Koszyk"
+```
+
+How the form is chosen:
+
+- An exact case such as `=0` wins over a category: `{count, plural, =0 {Your cart is empty} other {# items}}`
+  shows "Your cart is empty" for 0.
+- Otherwise the CLDR plural rules of the lookup's Locale pick the category (in Polish 1 is `one`, 22 is
+  `few`, 25 and 12 are `many`). A negative number picks by its size and keeps its minus sign.
+- A value with no form for the category uses `other`, and a value with no `other` uses its last form.
+- A Locale CLDR does not know uses its language (`pt-br` uses `pt`). An unknown language picks `other`.
+- When the client falls back to the `Translations.*` fallback text or to a `defaultValue`, the project's
+  default Locale picks the form, so an English fallback in a `ja` lookup still reads `1 item`.
+
+`#` prints the number in the number format of the Locale that picked the form (`1,000` in English,
+`1.000` in Dutch; a language CLDR does not know prints plain digits). `{count}`, where `count` is the
+Plural's argument, prints it the same way, and `'#'` prints a literal `#`. Other placeholders in the
+picked form are filled as usual, global placeholders included; a global placeholder never supplies the
+number. Write `#`, not `%d`: as with other placeholders the runtime client does not substitute
+Android format specifiers.
+
+When no number is supplied (for example `client.get(Translations.cart_items)`), the client renders the
+`other` form, or the last form, with `#` left as `#`, and warns "No number supplied for the Plural in this
+value."; with `throwOnPlaceholderError = true` it throws `PlaceholderSubstitutionException` instead. A
+number supplied for a value that is not a Plural is ignored. `getCached(...)` and `observe(...)` return
+the raw Plural text.
+
+Builds of an app on an older client show the raw ICU text of a Plural. Put a Plural on a **new Key**,
+and keep the old Key for those builds.
+
+### Syncing `<plurals>` with the Gradle plugin
+
+`pushTranslations` sends each `<plurals>` resource as a Plural under its `name`, with the argument
+`count`. The forms go in CLDR order (`zero`, `one`, `two`, `few`, `many`, `other`) whatever their order in
+the file, so the `cart_items` resource above is sent as
+`{count, plural, one {# item in {cartName}} other {# items in {cartName}}}`. Item text is sent as written.
+A `{`, `}` or apostrophe in an item that breaks the Plural grammar makes the value plain text, not a Plural.
+Write `#` for the number and `{name}` for a placeholder; the push warns about `%d` and `%1$d` in an item,
+as it does for a `<string>`. A `<plurals>` with no items is sent with a null value, and
+`translatable="false"` keeps it local. An item with an unknown or repeated `quantity` skips the whole
+resource with a warning. `generateTranslationResources` gives each `<plurals>` a `Translations.*`
+reference (its fallback is the default-locale Plural) and a `TranslationsBundledSnapshot` entry per locale.
+
+`pullTranslations` keeps each Key's element type. A Key that the default-locale `strings.xml` holds as
+`<plurals>` is written back as `<plurals>`, one `<item>` per form in CLDR order, keeping
+`translatable="false"`; a Key held as `<string>` stays a `<string>`, even when its value is ICU text. When
+the default-locale file has no element for the Key, the element in that locale's own file decides. A Key with
+no local element becomes `<plurals>` when its remote value is a Plural with no exact case such as `=0`,
+and a `<string>` otherwise. When the remote value of a `<plurals>` Key is a non-null value that is not such a Plural, pull leaves
+that locale's resource as it is and warns with the Key, its Origin, and the locale. A null value removes that
+locale's `<plurals>` resource without a warning, as it removes a `<string>`.
+
 ## Compose
 
 If you use Compose, add `translationtools-client-compose` and provide the client through composition locals.
@@ -560,7 +637,7 @@ Available Gradle tasks:
   no running build of the app declares it for 7 days plus a 24-hour grace. While old and new app
   versions both run, TranslationTools keeps the Keys of both. One module's push leaves another
   module's Keys alone. A leftover `androidResources.prune` setting (or `-Ptranslationtools.prune`) is ignored.
-  Strings marked `translatable="false"` are local-only — never pushed.
+  Strings and `<plurals>` marked `translatable="false"` are local-only — never pushed.
 - `./gradlew.bat pullTranslations`
   Downloads translations from TranslationTools and updates local XML (and Apple `.strings`).
   When codegen is enabled (default), pull then regenerates Kotlin resources. With
@@ -688,8 +765,8 @@ client.get(Translations.home_title)
 
 ### Migration notes
 
-- only XML `<string>` entries are generated
-- `<plurals>` and `<string-array>` are skipped and need separate handling
+- only XML `<string>` and `<plurals>` entries are generated
+- `<string-array>` is skipped and needs separate handling
 - generated files live under `build/generated/...`; do not edit them by hand
 - moving a string to a different XML file changes its translation origin in TranslationTools
 
@@ -717,3 +794,21 @@ For sync-only on a KMP module (no `Translations.*` yet): apply the plugin on tha
 set `generated.enabled: false`, keep composite-build install via `includeBuild`, and run
 push/pull with configuration cache enabled. You do not need a separate non-Kotlin module
 or `--no-configuration-cache`.
+
+## Contributing
+
+### Regenerating the CLDR plural table
+
+The runtime client picks a Plural form with the CLDR cardinal plural rules (CLDR 49). Those rules live in
+`src/commonMain/kotlin/io/mvdm/translationtools/client/placeholders/CldrPluralRules.kt`, a **generated**
+file: do not edit it by hand. It is compiled from the committed CLDR data in `gradle/cldr/plurals.json` by
+the `generateCldrPluralRules` Gradle task (`gradle/cldr/cldr-plural-rules.gradle.kts`):
+
+```
+./gradlew.bat generateCldrPluralRules
+```
+
+Run it, and commit the regenerated file, only when you update `gradle/cldr/plurals.json` to a newer CLDR
+release or change the task script. `CldrPluralRulesSamplesTests` (`jvmTest`) checks the table against CLDR's
+own integer samples, and the `verifyCldrPluralRules` task, part of `check`, fails when the committed file
+differs from what `generateCldrPluralRules` would write.

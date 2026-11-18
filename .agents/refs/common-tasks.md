@@ -20,6 +20,13 @@
 2. Update `TranslationResourceGeneratorTests` and the functional tests.
 3. Generated names are `Translations` and `TranslationsBundledSnapshot` — keep them stable; renaming is a breaking (MAJOR) change.
 
+## Update the CLDR plural rules
+
+1. Replace `gradle/cldr/plurals.json` with the new CLDR `cldr-core` `supplemental/plurals.json`, or change `gradle/cldr/cldr-plural-rules.gradle.kts`.
+2. Run `./gradlew.bat generateCldrPluralRules` to regenerate `CldrPluralRules.kt`; never edit it by hand.
+3. Run `jvmTest` (`CldrPluralRulesSamplesTests` checks the table against CLDR's own samples) and `verifyCldrPluralRules` (part of `check`; fails if the file was hand-edited).
+4. Mention the CLDR version in `README.md` if it changes.
+
 ## Add a KMP target
 
 1. Declare the target in both `build.gradle.kts` and `translationtools-client-compose/build.gradle.kts`.

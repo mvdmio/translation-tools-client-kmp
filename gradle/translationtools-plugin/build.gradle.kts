@@ -45,6 +45,11 @@ tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
    pluginClasspath.from(kotlinGradlePluginTestClasspath)
 }
 
+// The runtime client's server fixture is read by PluralValueTests; declare it so a change reruns the test.
+val pluralParseExamples = rootProject.layout.projectDirectory.file("../../src/jvmTest/resources/plural-parse-examples.json")
+
 tasks.test {
    useJUnitPlatform()
+   inputs.file(pluralParseExamples).withPropertyName("pluralParseExamples").withPathSensitivity(PathSensitivity.NONE)
+   systemProperty("pluralParseExamples", pluralParseExamples.asFile.absolutePath)
 }

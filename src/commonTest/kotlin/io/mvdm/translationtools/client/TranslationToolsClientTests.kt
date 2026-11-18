@@ -1,5 +1,6 @@
 package io.mvdm.translationtools.client
 
+import io.mvdm.translationtools.client.placeholders.PlaceholderSubstitutionException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -756,6 +757,385 @@ class TranslationToolsClientTests
       assertEquals(listOf(TranslationDeclarationItem(homeTitleRef, "en", "Hello")), api.declarations.last().second)
    }
 
+   private val cartRef = TranslationRef(TEST_ORIGIN, "cart_items")
+   private val cartResource = TranslationStringResource(cartRef, fallback = ENGLISH_CART)
+
+   @Test
+   fun plural_should_render_the_english_form_the_number_picks() = runTest {
+      val client = pluralClient("en" to ENGLISH_CART)
+
+      val rendered = listOf(1, 5, 0, 1000, -1).map {
+         client.withPlaceholders(cartResource, "en").setPluralNumber(it).setPlaceholder("cartName", "Cart").render()
+      }
+
+      assertEquals(
+         listOf("1 item in Cart", "5 items in Cart", "0 items in Cart", "1,000 items in Cart", "-1 item in Cart"),
+         rendered,
+      )
+   }
+
+   @Test
+   fun plural_should_render_the_polish_form_the_number_picks() = runTest {
+      val client = pluralClient("pl" to POLISH_CART)
+
+      val rendered = listOf(1L, 22L, 25L, 12L).map {
+         client.withPlaceholders(cartResource, "pl").setPluralNumber(it).setPlaceholder("cartName", "Koszyk").render()
+      }
+
+      assertEquals(
+         listOf("1 produkt w Koszyk", "22 produkty w Koszyk", "25 produktów w Koszyk", "12 produktów w Koszyk"),
+         rendered,
+      )
+   }
+
+   @Test
+   fun plural_should_accept_an_int_number() = runTest {
+      val client = pluralClient("pl" to POLISH_CART)
+
+      val rendered = client.withPlaceholders(cartResource, "pl")
+         .setPluralNumber(listOf(1, 2).size)
+         .setPlaceholder("cartName", "Koszyk")
+         .render()
+
+      assertEquals("2 produkty w Koszyk", rendered)
+   }
+
+   @Test
+   fun plural_should_use_the_last_number_set() = runTest {
+      val client = pluralClient("en" to "{count, plural, one {one} other {other}}")
+
+      assertEquals("other", client.withPlaceholders(cartResource, "en").setPluralNumber(1).setPluralNumber(5L).render())
+   }
+
+   @Test
+   fun plural_exact_case_should_win_over_category() = runTest {
+      val client = pluralClient("en" to "{count, plural, =0 {Your cart is empty} one {# item} other {# items}}")
+
+      assertEquals("Your cart is empty", client.withPlaceholders(cartResource, "en").setPluralNumber(0).render())
+      assertEquals("1 item", client.withPlaceholders(cartResource, "en").setPluralNumber(1).render())
+   }
+
+   @Test
+   fun plural_exact_case_should_read_a_leading_zero_as_the_number_and_never_match_an_overflowing_one() = runTest {
+      val client = pluralClient("en" to "{count, plural, =99999999999999999999 {big} =01 {uno} other {#}}")
+
+      assertEquals("uno", client.withPlaceholders(cartResource, "en").setPluralNumber(1).render())
+      assertEquals("9223372036854775807", client.withPlaceholders(cartResource, "en").setPluralNumber(Long.MAX_VALUE).render().replace(",", ""))
+   }
+
+   @Test
+   fun plural_in_ja_should_pick_other_for_one() = runTest {
+      val client = pluralClient("ja" to "{count, plural, one {# item} other {# items}}")
+
+      assertEquals("1 items", client.withPlaceholders(cartResource, "ja").setPluralNumber(1).render())
+   }
+
+   @Test
+   fun plural_in_pt_br_should_use_the_pt_rules() = runTest {
+      val client = pluralClient("pt-br" to "{count, plural, one {# item} other {# itens}}")
+
+      assertEquals("0 item", client.withPlaceholders(cartResource, "pt-BR").setPluralNumber(0).render())
+      assertEquals("2 itens", client.withPlaceholders(cartResource, "pt-BR").setPluralNumber(2).render())
+   }
+
+   @Test
+   fun plural_in_an_underscore_tag_should_not_split_it_into_the_language() = runTest {
+      val client = pluralClient("pt_br" to "{count, plural, one {# item} other {# itens}}")
+
+      assertEquals("1 itens", client.withPlaceholders(cartResource, "pt_br").setPluralNumber(1).render())
+   }
+
+   @Test
+   fun plural_in_an_unknown_region_of_an_unknown_language_should_pick_other() = runTest {
+      val client = pluralClient("xx-yy" to "{count, plural, one {# item} other {# items}}")
+
+      assertEquals("1 items", client.withPlaceholders(cartResource, "xx-yy").setPluralNumber(1).render())
+   }
+
+   @Test
+   fun plural_in_a_region_with_its_own_rules_should_use_them_before_the_language() = runTest {
+      val client = pluralClient("pt-pt" to "{count, plural, one {# item} other {# itens}}")
+
+      assertEquals("0 itens", client.withPlaceholders(cartResource, "pt-PT").setPluralNumber(0).render())
+      assertEquals("1 item", client.withPlaceholders(cartResource, "pt-PT").setPluralNumber(1).render())
+   }
+
+   @Test
+   fun plural_in_arabic_should_pick_zero_and_two() = runTest {
+      val client = pluralClient("ar" to "{count, plural, zero {zero} two {two} other {other}}")
+
+      assertEquals("zero", client.withPlaceholders(cartResource, "ar").setPluralNumber(0).render())
+      assertEquals("two", client.withPlaceholders(cartResource, "ar").setPluralNumber(2).render())
+   }
+
+   @Test
+   fun plural_should_pick_by_the_size_of_the_smallest_long_without_overflow() = runTest {
+      val client = pluralClient("pl" to "{count, plural, one {one} few {few} many {many} other {other}}")
+
+      // |Long.MIN_VALUE| = 9223372036854775808 ends in 8, so Polish picks many.
+      assertEquals("many", client.withPlaceholders(cartResource, "pl").setPluralNumber(Long.MIN_VALUE).render())
+      assertEquals("few", client.withPlaceholders(cartResource, "pl").setPluralNumber(-22).render())
+   }
+
+   @Test
+   fun plural_in_an_unknown_language_should_pick_other_with_plain_digits() = runTest {
+      val client = pluralClient("xx" to "{count, plural, one {# item} other {# items}}")
+
+      assertEquals("1 items", client.withPlaceholders(cartResource, "xx").setPluralNumber(1).render())
+      assertEquals("1000 items", client.withPlaceholders(cartResource, "xx").setPluralNumber(1000).render())
+   }
+
+   @Test
+   fun plural_should_group_thousands_in_dutch() = runTest {
+      val client = pluralClient("nl" to "{count, plural, one {# artikel} other {# artikelen}}")
+
+      assertEquals("1.000 artikelen", client.withPlaceholders(cartResource, "nl").setPluralNumber(1000).render())
+   }
+
+   @Test
+   fun plural_should_fall_to_other_when_the_category_has_no_form() = runTest {
+      val client = pluralClient("pl" to "{count, plural, one {#a} other {#b}}")
+
+      assertEquals("22b", client.withPlaceholders(cartResource, "pl").setPluralNumber(22).render())
+   }
+
+   @Test
+   fun plural_should_fall_to_the_last_form_when_there_is_no_other() = runTest {
+      val client = pluralClient("en" to "{count, plural, one {single} few {last}}")
+
+      assertEquals("single", client.withPlaceholders(cartResource, "en").setPluralNumber(1).render())
+      assertEquals("last", client.withPlaceholders(cartResource, "en").setPluralNumber(5).render())
+   }
+
+   @Test
+   fun plural_should_print_the_number_for_the_argument_inside_a_form() = runTest {
+      val client = pluralClient("en" to "{count, plural, one {{count} item} other {{count} items}}")
+
+      assertEquals("1,000 items", client.withPlaceholders(cartResource, "en").setPluralNumber(1000).render())
+   }
+
+   @Test
+   fun plural_should_print_a_quoted_hash_literally() = runTest {
+      val client = pluralClient("en" to "{count, plural, other {Item '#' of #}}")
+
+      assertEquals("Item # of 3", client.withPlaceholders(cartResource, "en").setPluralNumber(3).render())
+   }
+
+   @Test
+   fun plural_should_fill_placeholders_and_globals_inside_the_picked_form() = runTest {
+      val client = pluralClient(
+         "en" to "{count, plural, one {# item in {cartName} on {appName}} other {# items in {cartName} on {appName}}}",
+         globalPlaceholders = mapOf("appName" to { "Acme" }),
+      )
+
+      val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(2).setPlaceholder("cartName", "Cart").render()
+
+      assertEquals("2 items in Cart on Acme", rendered)
+   }
+
+   @Test
+   fun plural_should_not_take_its_number_from_a_global_placeholder() = runTest {
+      val client = pluralClient(
+         "en" to "{count, plural, other {{count} items}}",
+         globalPlaceholders = mapOf("count" to { "GLOBAL" }),
+      )
+
+      assertEquals("3 items", client.withPlaceholders(cartResource, "en").setPluralNumber(3).render())
+   }
+
+   @Test
+   fun plural_should_render_the_default_locale_form_for_fallback_text() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en", "ja"), defaultLocale = "en"),
+         singleItems = mutableMapOf("ja|$TEST_ORIGIN|cart_items" to TranslationItem(cartRef, null)),
+      )
+      val client = pluralClient("en" to ENGLISH_CART, api = api)
+
+      val rendered = client.withPlaceholders(cartResource, "ja").setPluralNumber(1).setPlaceholder("cartName", "Cart").render()
+
+      assertEquals("1 item in Cart", rendered)
+      assertEquals(listOf("ja|$TEST_ORIGIN|cart_items|$ENGLISH_CART"), api.singleItemRequests)
+   }
+
+   @Test
+   fun plural_should_render_the_default_locale_form_for_a_default_value_when_the_cached_value_is_null() = runTest {
+      val client = pluralClient("ja" to null)
+
+      val rendered = client.withPlaceholders(cartRef, "ja", ENGLISH_CART).setPluralNumber(1).setPlaceholder("cartName", "Cart").render()
+
+      assertEquals("1 item in Cart", rendered)
+   }
+
+   @Test
+   fun plural_should_pick_the_form_by_the_locale_of_a_value_from_the_service() = runTest {
+      val api = FakeTranslationToolsApi(
+         metadata = ProjectMetadata(locales = listOf("en", "ja"), defaultLocale = "en"),
+         singleItems = mutableMapOf("ja|$TEST_ORIGIN|cart_items" to TranslationItem(cartRef, ENGLISH_CART)),
+      )
+      val client = pluralClient("en" to ENGLISH_CART, api = api)
+
+      val rendered = client.withPlaceholders(cartResource, "ja").setPluralNumber(1).setPlaceholder("cartName", "Cart").render()
+
+      assertEquals("1 items in Cart", rendered)
+   }
+
+   @Test
+   fun withPlaceholders_resource_should_read_a_managed_resource_through_the_service() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = pluralClient("en" to ENGLISH_CART, api = api)
+      val other = TranslationStringResource(TranslationRef(TEST_ORIGIN, "other_key"), fallback = "Hello {userName}!")
+
+      val rendered = client.withPlaceholders(other, "en").setPlaceholder("userName", "Sam").render()
+
+      assertEquals("Hello Sam!", rendered)
+      assertEquals(listOf("en|$TEST_ORIGIN|other_key|Hello {userName}!"), api.singleItemRequests)
+   }
+
+   @Test
+   fun withPlaceholders_resource_should_render_an_unmanaged_resource_without_a_request() = runTest {
+      val api = FakeTranslationToolsApi(metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"))
+      val client = pluralClient("en" to ENGLISH_CART, api = api)
+      val missing = TranslationStringResource(TranslationRef(TEST_ORIGIN, "local_only"), fallback = ENGLISH_CART, managedRemotely = false)
+      val keyOnly = TranslationStringResource(TranslationRef(TEST_ORIGIN, "local_key"), managedRemotely = false)
+
+      val cached = client.withPlaceholders(cartResource.copy(managedRemotely = false), "en").setPluralNumber(5).setPlaceholder("cartName", "Cart").render()
+      val fallback = client.withPlaceholders(missing, "en").setPluralNumber(1).setPlaceholder("cartName", "Cart").render()
+      val key = client.withPlaceholders(keyOnly, "en").render()
+
+      assertEquals("5 items in Cart", cached)
+      assertEquals("1 item in Cart", fallback)
+      assertEquals("local_key", key)
+      assertEquals(emptyList(), api.singleItemRequests)
+   }
+
+   @Test
+   fun plural_without_a_number_should_render_the_other_form_with_hash_and_warn() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to ENGLISH_CART, warnings = warnings)
+
+      val rendered = client.get(cartResource, "en")
+
+      assertEquals("# items in {cartName}", rendered)
+      assertEquals(
+         listOf("No number supplied for the Plural in this value.", "No value supplied for placeholder '{cartName}'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun plural_without_a_number_should_render_the_last_form_when_there_is_no_other() = runTest {
+      val client = pluralClient("en" to "{count, plural, one {# a} few {# b}}")
+
+      assertEquals("# b", client.get(cartResource, "en"))
+   }
+
+   @Test
+   fun plural_without_a_number_should_throw_when_configured() = runTest {
+      val client = pluralClient("en" to ENGLISH_CART, throwOnPlaceholderError = true)
+
+      val fromGet = assertFailsWith<PlaceholderSubstitutionException> { client.get(cartResource, "en") }
+      val fromBuilder = assertFailsWith<PlaceholderSubstitutionException> {
+         client.withPlaceholders(cartResource, "en").setPlaceholder("cartName", "Cart").render()
+      }
+
+      assertEquals("No number supplied for the Plural in this value.", fromGet.message)
+      assertEquals("No number supplied for the Plural in this value.", fromBuilder.message)
+   }
+
+   @Test
+   fun plural_should_not_warn_about_a_placeholder_only_a_form_the_number_did_not_pick_holds() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "{count, plural, =0 {Your cart is empty} other {# items in {cartName}}}", warnings = warnings)
+
+      val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(0).setPlaceholder("cartName", "Cart").render()
+
+      assertEquals("Your cart is empty", rendered)
+      assertEquals(emptyList(), warnings)
+   }
+
+   @Test
+   fun plural_should_warn_and_keep_the_raw_placeholder_the_picked_form_needs() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to ENGLISH_CART, warnings = warnings)
+
+      val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(1).render()
+
+      assertEquals("1 item in {cartName}", rendered)
+      assertEquals(listOf("No value supplied for placeholder '{cartName}'."), warnings)
+   }
+
+   @Test
+   fun plural_number_on_a_plain_value_should_be_ignored_silently() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}!", warnings = warnings, throwOnPlaceholderError = true)
+
+      val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(3).setPlaceholder("userName", "Sam").render()
+
+      assertEquals("Hello Sam!", rendered)
+      assertEquals(emptyList(), warnings)
+   }
+
+   @Test
+   fun plural_fragment_inside_other_text_should_render_as_before() = runTest {
+      val client = pluralClient("en" to "You have {count, plural, one {# item} other {# items}} in {cartName}")
+
+      val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(2).setPlaceholder("cartName", "Cart").render()
+
+      assertEquals("You have {count, plural, one {# item} other {# items}} in Cart", rendered)
+   }
+
+   @Test
+   fun two_plurals_in_one_value_should_render_as_before() = runTest {
+      val twoPlurals = "{a, plural, one {x} other {y}}{b, plural, one {x} other {y}}"
+      val client = pluralClient("en" to twoPlurals)
+
+      assertEquals(twoPlurals, client.withPlaceholders(cartResource, "en").setPluralNumber(1).render())
+   }
+
+   @Test
+   fun brace_zero_should_render_literally_in_a_plain_value_and_in_a_form() = runTest {
+      val plain = pluralClient("en" to "Item {0}")
+      val inForm = pluralClient("en" to "{count, plural, one {{0} item} other {{0} items}}")
+
+      assertEquals("Item {0}", plain.withPlaceholders(cartResource, "en").setPluralNumber(1).render())
+      assertEquals("{0} items", inForm.withPlaceholders(cartResource, "en").setPluralNumber(2).render())
+   }
+
+   @Test
+   fun getCached_and_observe_should_return_the_raw_plural() = runTest {
+      val client = pluralClient("en" to ENGLISH_CART)
+
+      assertEquals(ENGLISH_CART, client.getCached(cartRef, "en"))
+      assertEquals(ENGLISH_CART, client.observe(cartRef, "en").first())
+   }
+
+   private suspend fun pluralClient(
+      vararg values: Pair<String, String?>,
+      api: FakeTranslationToolsApi? = null,
+      warnings: MutableList<String>? = null,
+      globalPlaceholders: Map<String, () -> String?> = emptyMap(),
+      throwOnPlaceholderError: Boolean = false,
+   ): TranslationToolsClient {
+      val locales = (listOf("en") + values.map { it.first }).distinct()
+      val metadata = ProjectMetadata(locales = locales, defaultLocale = "en")
+      val client = createClient(
+         api = api ?: FakeTranslationToolsApi(metadata = metadata),
+         bundledSnapshot = StoredTranslations(
+            projectMetadata = metadata,
+            snapshots = values.map { (locale, value) -> TranslationSnapshot(locale, listOf(TranslationItem(cartRef, value))) },
+            lastSuccessfulRefreshAt = Instant.parse("2026-03-25T10:00:00Z"),
+         ),
+         backgroundRefreshEnabled = false,
+         globalPlaceholders = globalPlaceholders,
+         throwOnPlaceholderError = throwOnPlaceholderError,
+      )
+      if (warnings != null)
+         client.warnSink = { warnings += it }
+
+      client.initialize()
+      return client
+   }
+
    private fun createClient(
       api: FakeTranslationToolsApi,
       currentLocale: String? = "en",
@@ -886,3 +1266,8 @@ private class MutableClock(var current: Instant)
 }
 
 private const val TEST_ORIGIN = ":test:/strings.xml"
+
+private const val ENGLISH_CART = "{count, plural, one {# item in {cartName}} other {# items in {cartName}}}"
+
+private const val POLISH_CART =
+   "{count, plural, one {# produkt w {cartName}} few {# produkty w {cartName}} many {# produktów w {cartName}} other {# produktu w {cartName}}}"

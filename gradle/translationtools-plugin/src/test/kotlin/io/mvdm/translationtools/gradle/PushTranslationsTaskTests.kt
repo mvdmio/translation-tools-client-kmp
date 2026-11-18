@@ -148,6 +148,62 @@ class PushTranslationsTaskTests
    }
 
    @Test
+   fun push_should_send_each_plurals_resource_as_one_plural_per_locale_and_keep_translatable_false_local()
+   {
+      MockTranslationToolsServer().use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """
+               <plurals name="cart_items">
+                  <item quantity="other"># items in {cartName}</item>
+                  <item quantity="one"># item in {cartName}</item>
+               </plurals>
+               <plurals name="empty_items"></plurals>
+               <plurals name="unit_count" translatable="false"><item quantity="other">#</item></plurals>
+            """.trimIndent(),
+            dutchStrings = """<plurals name="cart_items"><item quantity="other"># artikelen</item><item quantity="one"># artikel</item></plurals>""",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         val sentValues = Json.parseToJsonElement(server.pushBodies.single()).jsonObject.getValue("items").jsonArray
+            .associate {
+               val item = it.jsonObject
+               (item.getValue("key").jsonPrimitive.content + "/" + item.getValue("locale").jsonPrimitive.content) to
+                  item.getValue("value").let { value -> if (value is kotlinx.serialization.json.JsonNull) null else value.jsonPrimitive.content }
+            }
+         assertEquals(
+            mapOf(
+               "cart_items/en" to "{count, plural, one {# item in {cartName}} other {# items in {cartName}}}",
+               "cart_items/nl" to "{count, plural, one {# artikel} other {# artikelen}}",
+               "empty_items/en" to null,
+               "empty_items/nl" to null,
+            ),
+            sentValues,
+         )
+      }
+   }
+
+   @Test
+   fun push_should_warn_about_android_format_specifiers_in_a_plurals_item_naming_the_key()
+   {
+      MockTranslationToolsServer().use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """<plurals name="cart_items"><item quantity="one">%d item</item><item quantity="other">%d items</item></plurals>""",
+            dutchStrings = "",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         assertEquals(
+            listOf("'cart_items' in ':/strings.xml' contains Android format specifier '%d' (locales: en). $WARNING_ADVICE"),
+            result.output.lines().filter { it.contains("contains Android format specifier") },
+         )
+      }
+   }
+
+   @Test
    fun push_should_not_warn_about_placeholders_and_escaped_percent()
    {
       MockTranslationToolsServer().use { server ->

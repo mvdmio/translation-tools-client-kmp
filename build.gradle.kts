@@ -10,7 +10,9 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "3.2.0"
+version = "3.3.0"
+
+apply(from = "gradle/cldr/cldr-plural-rules.gradle.kts")
 
 val generatedVersionDir = layout.buildDirectory.dir("generated/translationtools")
 

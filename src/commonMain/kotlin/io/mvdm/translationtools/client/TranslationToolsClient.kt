@@ -196,16 +196,42 @@ public class TranslationToolsClient(
       placeholders: Map<String, String?> = emptyMap(),
    ): String
    {
+      return getRendered(ref, locale, defaultValue, placeholders, pluralNumber = null)
+   }
+
+   private suspend fun getRendered(
+      ref: TranslationRef,
+      locale: String?,
+      defaultValue: String?,
+      placeholders: Map<String, String?>,
+      pluralNumber: Long?,
+   ): String
+   {
       val validatedRef = validateRef(ref)
       val resolvedLocale = resolveLocale(locale)
       val cachedItem = translationsFlow.value[resolvedLocale]?.get(validatedRef)
       if (cachedItem != null)
-         return render(cachedItem.value ?: defaultValue ?: validatedRef.key, placeholders)
+         return renderOrFallback(cachedItem.value, resolvedLocale, defaultValue ?: validatedRef.key, placeholders, pluralNumber)
 
       val fetched = api.getTranslation(resolvedLocale, validatedRef, defaultValue)
       putItem(resolvedLocale, fetched)
       persist()
-      return render(fetched.value ?: defaultValue ?: validatedRef.key, placeholders)
+      return renderOrFallback(fetched.value, resolvedLocale, defaultValue ?: validatedRef.key, placeholders, pluralNumber)
+   }
+
+   // A value from the cache or TranslationTools is in the lookup's Locale; the fallback text is in the default Locale's.
+   private fun renderOrFallback(
+      value: String?,
+      valueLocale: String,
+      fallback: String,
+      placeholders: Map<String, String?>,
+      pluralNumber: Long?,
+   ): String
+   {
+      return if (value != null)
+         render(value, placeholders, pluralNumber, valueLocale)
+      else
+         render(fallback, placeholders, pluralNumber, defaultLocale())
    }
 
    public suspend fun get(
@@ -230,7 +256,9 @@ public class TranslationToolsClient(
     */
    public fun withPlaceholders(ref: TranslationRef, locale: String? = null, defaultValue: String? = null): TranslationRenderBuilder
    {
-      return TranslationRenderBuilder(this, ref, locale, defaultValue)
+      return TranslationRenderBuilder { placeholders, pluralNumber ->
+         getRendered(ref, locale, defaultValue, placeholders, pluralNumber)
+      }
    }
 
    /**
@@ -238,14 +266,33 @@ public class TranslationToolsClient(
     */
    public fun withPlaceholders(origin: String, key: String, locale: String? = null, defaultValue: String? = null): TranslationRenderBuilder
    {
-      return TranslationRenderBuilder(this, TranslationRef(origin = origin, key = key), locale, defaultValue)
+      return withPlaceholders(TranslationRef(origin = origin, key = key), locale, defaultValue)
    }
 
-   internal fun render(value: String, placeholders: Map<String, String?>): String
+   /**
+    * Begin a fluent binding for the generated [resource], which supplies its fallback text. Bind values
+    * with [TranslationRenderBuilder.setPlaceholder], and the number of a Plural with
+    * [TranslationRenderBuilder.setPluralNumber], then call [TranslationRenderBuilder.render].
+    *
+    * `render()` behaves like [get] with [resource] and those bindings. A resource that is not
+    * managed remotely renders its cached value, else its fallback, else its Key, without asking
+    * TranslationTools.
+    */
+   public fun withPlaceholders(resource: TranslationStringResource, locale: String? = null): TranslationRenderBuilder
+   {
+      return TranslationRenderBuilder { placeholders, pluralNumber ->
+         getRendered(resource, locale, placeholders, pluralNumber)
+      }
+   }
+
+   // Warnings are not visible from the public API yet (issue #9); tests set this to read them.
+   internal var warnSink: ((String) -> Unit)? = null
+
+   internal fun render(value: String, placeholders: Map<String, String?>, pluralNumber: Long?, pluralLocale: String): String
    {
       // A '{' may open a token and a '\'' may open an ICU escape the parser collapses ('' -> '), so either
       // forces the full pass. Without the apostrophe check a value like "It''s" would skip collapsing here and
-      // render differently from the server/.NET canonical parser.
+      // render differently from the server/.NET canonical parser. A Plural always contains '{'.
       if (placeholders.isEmpty() && globals.registeredNames.isEmpty() && '{' !in value && '\'' !in value)
          return value
 
@@ -255,19 +302,36 @@ public class TranslationToolsClient(
          globals = globals,
          knownSet = null,
          throwOnError = options.throwOnPlaceholderError,
+         warn = warnSink,
+         pluralNumber = pluralNumber,
+         pluralLocale = pluralLocale,
       )
    }
 
    public suspend fun get(resource: TranslationStringResource, locale: String? = null): String
    {
-      return if (resource.managedRemotely) {
-         get(resource.ref, locale, resource.fallback)
-      }
-      else {
-         // Render the bundled value too so global placeholders/escapes resolve consistently with the
-         // remotely-managed path (which renders via get(ref, ...)); getCached itself returns the raw value.
-         render(getCached(resource, locale), emptyMap())
-      }
+      return getRendered(resource, locale, emptyMap(), pluralNumber = null)
+   }
+
+   private suspend fun getRendered(
+      resource: TranslationStringResource,
+      locale: String?,
+      placeholders: Map<String, String?>,
+      pluralNumber: Long?,
+   ): String
+   {
+      if (resource.managedRemotely)
+         return getRendered(resource.ref, locale, resource.fallback, placeholders, pluralNumber)
+
+      // Render the bundled value too so global placeholders/escapes resolve consistently with the
+      // remotely-managed path; getCached itself returns the raw value.
+      return renderOrFallback(
+         getCached(resource.ref, locale),
+         resolveLocale(locale),
+         resource.fallback ?: resource.ref.key,
+         placeholders,
+         pluralNumber,
+      )
    }
 
    public fun observe(ref: TranslationRef, locale: String? = null): Flow<String?>
@@ -417,8 +481,12 @@ public class TranslationToolsClient(
    {
       return locale?.let(::normalizeLocale)
          ?: options.currentLocaleProvider()?.takeIf { it.isNotBlank() }?.let(::normalizeLocale)
-         ?: projectMetadataFlow.value?.defaultLocale
-         ?: DEFAULT_LOCALE
+         ?: defaultLocale()
+   }
+
+   private fun defaultLocale(): String
+   {
+      return projectMetadataFlow.value?.defaultLocale ?: DEFAULT_LOCALE
    }
 
    private fun isRefreshStale(referenceTime: Instant): Boolean

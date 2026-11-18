@@ -138,4 +138,23 @@ class TranslationResourceGeneratorTests
          "expected placeholder tokens carried through unchanged in bundled snapshot, got:\n$result",
       )
    }
+
+   @Test
+   fun generate_should_give_a_plurals_key_a_reference_with_the_default_locale_plural_as_fallback_and_a_snapshot_entry_per_locale()
+   {
+      val enPlural = "{count, plural, one {# item in {cartName}} other {# items in {cartName}}}"
+      val nlPlural = "{count, plural, one {# artikel in {cartName}} other {# artikelen in {cartName}}}"
+      val project = baseProject.copy(
+         entries = listOf(
+            AndroidTranslationEntry(":app:/strings.xml", "cart_items", "cart_items", mapOf("en" to enPlural, "nl" to nlPlural), "strings.xml", true),
+         ),
+      )
+
+      val resources = renderTranslationResources(project = project, packageName = "com.example.translations")
+      val snapshot = renderBundledSnapshot(project, "com.example.translations")
+
+      assertTrue(resources.contains("""fallback = "$enPlural""""), resources)
+      assertTrue(snapshot.contains("""value = "$enPlural""""), snapshot)
+      assertTrue(snapshot.contains("""value = "$nlPlural""""), snapshot)
+   }
 }

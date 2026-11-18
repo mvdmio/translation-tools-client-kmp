@@ -14,7 +14,13 @@ translationtools-client-kmp/
 │   │   ├── TranslationSnapshotStore.kt     # Persisted snapshot abstraction
 │   │   ├── TranslationRef.kt               # (origin, key) identity
 │   │   ├── TranslationModels.kt
-│   │   └── TranslationToolsExceptions.kt
+│   │   ├── TranslationToolsExceptions.kt
+│   │   ├── Platform.kt                     # expect formatWholeNumber (actuals in androidMain/jvmMain)
+│   │   └── placeholders/                   # Placeholder + Plural rendering
+│   │       ├── PlaceholderTokenParser.kt   # Placeholder tokens and the Plural parse
+│   │       ├── Plural.kt                   # parsed Plural, form pick
+│   │       ├── PluralRules.kt              # Locale tag -> CLDR rule lookup
+│   │       └── CldrPluralRules.kt          # GENERATED CLDR table, never hand-edited
 │   ├── androidMain/kotlin/...              # AndroidTranslationSnapshotStores
 │   ├── jvmMain/kotlin/...                  # JvmTranslationSnapshotStores
 │   ├── commonTest/ , jvmTest/             # Tests (see testing.md)
@@ -25,9 +31,11 @@ translationtools-client-kmp/
 │       ├── TranslationToolsPlugin.kt
 │       ├── GenerateTranslationResourcesTask.kt
 │       ├── PushTranslationsTask.kt / PullTranslationsTask.kt / InitTranslationToolsTask.kt
-│       ├── AndroidStringResourceParser.kt  # parses Android <string> XML
+│       ├── AndroidStringResourceParser.kt  # parses Android <string> and <plurals> XML
+│       ├── PluralValue.kt                  # <plurals> items <-> Plural value (same grammar as the runtime)
 │       ├── TranslationResourceGenerator.kt # emits Translations.*
 │       └── BundledSnapshotGenerator.kt     # emits TranslationsBundledSnapshot
+├── gradle/cldr/                            # plurals.json (CLDR data) + generateCldrPluralRules task script
 ├── .github/workflows/                      # CI/CD (Maven Central publish)
 ├── CONTEXT.md , docs/adr/                  # Domain glossary + decisions
 └── README.md                              # Usage documentation
@@ -64,6 +72,13 @@ The plugin reads Android XML (`AndroidStringResourceParser`) and generates the t
 `BundledSnapshotGenerator`). It also wires generation into Kotlin compilation. Sync tasks
 push local XML to TranslationTools and pull remote changes back. iOS Apple `.strings` are
 **sync-only** — no codegen, no bundled snapshot, no runtime refresh (see `docs/adr/0001`).
+
+## CLDR plural table
+
+`src/commonMain/.../placeholders/CldrPluralRules.kt` is generated, not written. The `generateCldrPluralRules`
+Gradle task (`gradle/cldr/cldr-plural-rules.gradle.kts`, applied from the root `build.gradle.kts`) compiles the
+committed `gradle/cldr/plurals.json` into it. To change the table, change `plurals.json` or the task script and
+run `./gradlew.bat generateCldrPluralRules`; never edit the Kotlin file by hand.
 
 ## Important files
 

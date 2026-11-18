@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-18: Plurals
+
+Version 3.3.0 renders Plurals. A Plural is a translation value with one whole sentence per plural form, such as `{count, plural, one {# item} other {# items}}`. Pass the number with `client.withPlaceholders(Translations.cart_items, "pl").setPluralNumber(22)` and the client shows the one sentence that number picks, by the CLDR plural rules of the Locale. `withPlaceholders` now also takes a `Translations.*` reference.
+
+The Gradle plugin syncs Android `<plurals>` resources as Plurals. `generateTranslationResources` gives each one a `Translations.*` reference and a bundled fallback, `pushTranslations` sends it, and `pullTranslations` writes it back as `<plurals>` instead of deleting it. `<string-array>` is still skipped.
+
+Builds of an app on an older client show the raw ICU text of a Plural. Put a Plural on a new Key, and keep the old Key for those builds.
+
 ## 2026-11-04: The app declares its Keys at start
 
 Version 3.2.0 makes the app declare the Keys of its bundled snapshot to TranslationTools when it starts, under your `environment`. The values fill only empty Translation Values, so an edit made in TranslationTools is never overwritten. A start with no network or no bundled snapshot is unaffected, and a failed Declaration is tried again on the next start.

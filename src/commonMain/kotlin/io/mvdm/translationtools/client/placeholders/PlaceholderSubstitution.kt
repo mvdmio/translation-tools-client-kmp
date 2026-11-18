@@ -1,5 +1,7 @@
 package io.mvdm.translationtools.client.placeholders
 
+import io.mvdm.translationtools.client.formatWholeNumber
+
 /**
  * Runtime placeholder substitution engine (spec §5). Pure string substitution for Phase 1.
  *
@@ -22,6 +24,8 @@ internal object PlaceholderSubstitution
     *   inert literals). String-keyed path: `null`, so unbound/unregistered tokens degrade.
     * @param throwOnError When true, every warn case throws [PlaceholderSubstitutionException] instead.
     * @param warn Sink for warning messages (no-op when null).
+    * @param pluralNumber The number that picks a Plural form; ignored when [value] is not a whole-value Plural.
+    * @param pluralLocale The Locale tag whose CLDR rules and number format pick and print a Plural form.
     */
    fun substitute(
       value: String,
@@ -30,20 +34,44 @@ internal object PlaceholderSubstitution
       knownSet: Set<String>?,
       throwOnError: Boolean,
       warn: ((String) -> Unit)? = null,
+      pluralNumber: Long? = null,
+      pluralLocale: String = "en",
    ): String
    {
       if (value.isEmpty())
          return value
 
-      val segments = PlaceholderTokenParser.parse(value)
+      val plural = PlaceholderTokenParser.parsePlural(value)
+      val allSegments: List<PlaceholderSegment>
+      val rendered: List<PlaceholderSegment>
+      val numberText: String
+
+      if (plural == null) {
+         allSegments = PlaceholderTokenParser.parse(value)
+         rendered = allSegments
+         numberText = ""
+      }
+      else {
+         allSegments = plural.cases.flatMap { it.segments }
+         if (pluralNumber == null) {
+            warnOrThrow(throwOnError, warn, "No number supplied for the Plural in this value.")
+            rendered = plural.fallbackCase().segments
+            numberText = "#"
+         }
+         else {
+            val rules = PluralRules.forLocale(pluralLocale)
+            rendered = plural.pick(pluralNumber, rules).segments
+            numberText = rules.matchedTag?.let { formatWholeNumber(pluralNumber, it) } ?: pluralNumber.toString()
+         }
+      }
 
       val builder = StringBuilder(value.length)
-      val hasBindings = !bindings.isNullOrEmpty()
-      val consumedTokens = if (hasBindings) mutableSetOf<String>() else null
 
-      for (segment in segments) {
+      for (segment in rendered) {
          when (segment) {
             is PlaceholderSegment.Literal -> builder.append(segment.text)
+
+            is PlaceholderSegment.Number -> builder.append(numberText)
 
             is PlaceholderSegment.Token -> {
                val name = segment.name
@@ -51,7 +79,6 @@ internal object PlaceholderSubstitution
                // 1. Binding wins (shadows a global of the same name).
                if (bindings != null && bindings.containsKey(name)) {
                   builder.append(bindings[name] ?: "")
-                  consumedTokens?.add(name)
                   continue
                }
 
@@ -85,10 +112,11 @@ internal object PlaceholderSubstitution
          }
       }
 
-      // Extra supplied binding that never appeared as a token -> warn, still succeed.
-      if (bindings != null && consumedTokens != null) {
+      // Extra supplied binding that appears in no form of the value -> warn, still succeed.
+      if (!bindings.isNullOrEmpty()) {
+         val present = allSegments.mapNotNullTo(mutableSetOf()) { (it as? PlaceholderSegment.Token)?.name }
          for (key in bindings.keys) {
-            if (key !in consumedTokens)
+            if (key !in present)
                warnOrThrow(throwOnError, warn, "Supplied placeholder '$key' is not present in the value.")
          }
       }
