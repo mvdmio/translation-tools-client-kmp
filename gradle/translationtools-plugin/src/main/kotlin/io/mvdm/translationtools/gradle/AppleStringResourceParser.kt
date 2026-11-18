@@ -13,7 +13,7 @@ internal data class ParsedAppleStringsFile(
 )
 
 /**
- * Parses Apple `.strings` and `.stringsdict` files into the shared `(origin, key, locale)` translation model.
+ * Parses Apple `.strings`, `.stringsdict` and String Catalog (`.xcstrings`) files into the shared `(origin, key, locale)` translation model.
  *
  * Apple `.strings` are an independent second source of truth alongside Android XML: every
  * discovered key is managed remotely, no typed accessors are generated, and the files in the
@@ -29,8 +29,10 @@ internal class AppleStringResourceParser
    {
       val discovery = discoverAppleLocaleFiles(resourceDirectories, defaultLocale)
       val warnings = discovery.warnings.toMutableList()
-      if (discovery.files.isEmpty()) {
-         warnings += "No .lproj directories with .strings or .stringsdict files were found under the configured appleResources.resourceDirectories."
+      val details = mutableListOf<String>()
+      if (discovery.files.isEmpty() && discovery.catalogs.isEmpty()) {
+         warnings += "No .lproj directories with .strings or .stringsdict files, and no .xcstrings files, " +
+            "were found under the configured appleResources.resourceDirectories."
          return AppleTranslationProject(locales = emptyList(), entries = emptyList(), warnings = warnings)
       }
 
@@ -46,6 +48,36 @@ internal class AppleStringResourceParser
          }
       }
 
+      discovery.catalogs.forEach { file ->
+         val catalog = when (val parsed = parseAppleStringCatalog(decodeAppleStrings(file.readBytes()), file.path)) {
+            is ParsedAppleStringCatalog.Readable -> parsed.catalog
+            is ParsedAppleStringCatalog.Unreadable -> {
+               warnings += parsed.warning
+               details.addAll(listOfNotNull(parsed.detail))
+               return@forEach
+            }
+         }
+         readableLocales += catalog.locales
+
+         val origin = buildOrigin(projectPath, file.name)
+         catalog.keys.filter { it.shouldTranslate }.forEach { key ->
+            val perLocale = collected.getOrPut(origin to key.key) { linkedMapOf() }
+            catalog.locales.forEach { locale ->
+               val value = when (val pushValue = catalog.pushValue(key, locale)) {
+                  is CatalogPushValue.Value -> pushValue.text
+                  CatalogPushValue.NoValue -> null
+                  is CatalogPushValue.Skipped -> {
+                     warnings += pushValue.warning
+                     null
+                  }
+               }
+               // A catalog that lacks a value must not erase the value another catalog of the same Origin holds.
+               if (value != null || locale !in perLocale)
+                  perLocale[locale] = value
+            }
+         }
+      }
+
       val locales = readableLocales.sorted()
       val entries = collected
          .toSortedMap(compareBy<Pair<String, String>> { it.first }.thenBy { it.second })
@@ -57,7 +89,7 @@ internal class AppleStringResourceParser
             )
          }
 
-      return AppleTranslationProject(locales = locales, entries = entries, warnings = warnings)
+      return AppleTranslationProject(locales = locales, entries = entries, warnings = warnings, details = details)
    }
 
    /** The pushed value of each key in [variant], or null (after a warning) for a `.stringsdict` file that cannot be read. */
@@ -90,9 +122,17 @@ internal fun discoverAppleLocaleFiles(resourceDirectories: List<File>, defaultLo
 {
    val normalizedDefaultLocale = normalizeAppleLocale(defaultLocale)
    val warnings = mutableListOf<String>()
-   val discovered = resourceDirectories
+   val existingDirectories = resourceDirectories
       .distinct()
       .filter { it.exists() }
+   val catalogs = existingDirectories
+      .flatMap { directory ->
+         directory.listFiles()
+            ?.filter { it.isFile && it.extension.equals("xcstrings", ignoreCase = true) }
+            .orEmpty()
+      }
+      .sortedBy { it.path }
+   val discovered = existingDirectories
       .flatMap { directory ->
          directory.listFiles()
             ?.filter { it.isDirectory && it.name.endsWith(".lproj") }
@@ -140,7 +180,7 @@ internal fun discoverAppleLocaleFiles(resourceDirectories: List<File>, defaultLo
       }
    }
 
-   return AppleResourceDiscovery(deduplicated.sortedBy { it.file.path }, warnings)
+   return AppleResourceDiscovery(deduplicated.sortedBy { it.file.path }, catalogs, warnings)
 }
 
 internal fun resolveAppleLocale(lprojDirectoryName: String, defaultLocale: String): AppleLocaleResolution

@@ -154,7 +154,10 @@ class AppleStringResourceParserTests
 
       assertEquals(emptyList(), project.entries)
       assertEquals(
-         listOf("No .lproj directories with .strings or .stringsdict files were found under the configured appleResources.resourceDirectories."),
+         listOf(
+            "No .lproj directories with .strings or .stringsdict files, and no .xcstrings files, " +
+               "were found under the configured appleResources.resourceDirectories.",
+         ),
          project.warnings,
       )
    }

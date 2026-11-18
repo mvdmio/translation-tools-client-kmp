@@ -17,8 +17,8 @@ Current scope:
 - generates `Translations.*` and `TranslationsBundledSnapshot`
 - supports Android, JVM, and iOS consumers through the KMP client
 - skips `<string-array>`
-- optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`) and pushes
-  Apple `.stringsdict` plurals as a second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
+- optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`), Apple
+  `.stringsdict` plurals, and Apple String Catalogs (`.xcstrings`) as a second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
   no generated `Translations.*` accessors and no runtime refresh (see [Apple `.strings` (iOS)](#apple-strings-ios))
 
 ## Install
@@ -189,7 +189,7 @@ androidResources:
 # placeholders:
 #   globals:
 #     - appName
-# Optional — only if you also sync Apple .strings files (see "Apple .strings (iOS)").
+# Optional — only if you also sync Apple .strings, .stringsdict or .xcstrings (String Catalog) files (see "Apple .strings (iOS)").
 # appleResources:
 #   resourceDirectories:
 #     - ../iosApp/iosApp
@@ -219,7 +219,7 @@ Config fields:
   `globalPlaceholders`; the plugin does not check that. Each name must be a valid Placeholder name (a lowercase
   letter followed by letters and digits); `generateTranslationResources` fails and names an entry that is not.
   Leaving the key out means no Global placeholders.
-- `appleResources.resourceDirectories` — optional; enables Apple `.strings` and `.stringsdict` sync (see
+- `appleResources.resourceDirectories` — optional; enables Apple `.strings`, `.stringsdict` and String Catalog (`.xcstrings`) sync (see
   [Apple `.strings` (iOS)](#apple-strings-ios)).
 
 API key lookup order (Gradle plugin):
@@ -678,7 +678,7 @@ Available Gradle tasks:
 - `./gradlew.bat generateTranslationResources`
   Generates `Translations.*` and `TranslationsBundledSnapshot` from local XML.
 - `./gradlew.bat pushTranslations`
-  Uploads local XML — and, when `appleResources` is configured, Apple `.strings` and `.stringsdict` — to TranslationTools.
+  Uploads local XML — and, when `appleResources` is configured, Apple `.strings`, `.stringsdict` and `.xcstrings` — to TranslationTools.
   Sends only the local Keys and values, in one request; nothing is fetched from the server first.
   A Key deleted from `strings.xml` is not removed by a push. It disappears from TranslationTools once
   no running build of the app declares it for 7 days plus a 24-hour grace. While old and new app
@@ -686,7 +686,7 @@ Available Gradle tasks:
   module's Keys alone. A leftover `androidResources.prune` setting (or `-Ptranslationtools.prune`) is ignored.
   Strings and `<plurals>` marked `translatable="false"` are local-only — never pushed.
 - `./gradlew.bat pullTranslations`
-  Downloads translations from TranslationTools and updates local XML (and Apple `.strings` and `.stringsdict`).
+  Downloads translations from TranslationTools and updates local XML (and Apple `.strings`, `.stringsdict` and `.xcstrings`).
   When codegen is enabled (default), pull then regenerates Kotlin resources. With
   `generated.enabled: false`, pull only writes resources — it does not run generate.
   Existing entries are updated in place; new keys are added. Keys not managed remotely are written back
@@ -705,7 +705,7 @@ Normal workflow (codegen on — default):
 
 Sync-only workflow (`generated.enabled: false` on the same module):
 
-1. Edit Android XML (and optional Apple `.strings` and `.stringsdict`).
+1. Edit Android XML (and optional Apple `.strings`, `.stringsdict` and `.xcstrings`).
 2. Run `pushTranslations` / `pullTranslations` with configuration cache on as usual.
 3. Keep using your existing string reads until you adopt the runtime client and turn codegen back on.
 
@@ -848,8 +848,86 @@ stay sync-only like `.strings`: no `Translations.*` reference, no bundled snapsh
   creates a `.stringsdict` file for an Origin that has no local file with that name in any Locale
   (an unreadable local file counts as a local file).
 
-`.xcstrings` (String Catalogs) are not supported. See
-[issue #10](https://github.com/mvdmio/translation-tools-client-kmp/issues/10).
+### String Catalogs (`.xcstrings`)
+
+An Apple String Catalog (`Localizable.xcstrings`) holds a table's Keys in every Locale in one JSON
+file. The plugin syncs it with the same two tasks. A catalog stays **sync-only** like `.strings`: no
+`Translations.*` reference, no bundled snapshot, no runtime refresh. Apps can use `.strings`,
+`.stringsdict` and String Catalogs together; each file syncs on its own terms.
+
+- **Discovery.** Every `.xcstrings` file that sits directly inside a directory listed under
+  `appleResources.resourceDirectories`, next to its `.lproj` directories, is read. It does not look
+  inside `.lproj` directories or other subdirectories, and there is no new setting. The "No .lproj
+  directories ..." warning appears only when the directories hold no `.strings` or `.stringsdict`
+  files and no `.xcstrings` files.
+- **Origins.** Each catalog is its own origin named after the file: `Localizable.xcstrings` is
+  `:/Localizable.xcstrings`, separate from `:/Localizable.strings`, so a Key in both is two
+  Translation refs. Locale codes follow the `.lproj` rule (`pt-BR` becomes `pt-br`).
+- **Source language.** The catalog's own `sourceLanguage` decides which Locale falls back to the Key
+  text. A Key with no localization in it is sent with the Key itself as the source-language value
+  (Xcode leaves that localization out when the value equals the Key, as in `String(localized: "Done")`).
+  A source-language value that is empty is sent empty. In every other Locale a Key without a value is
+  sent with no value, and TranslationTools keeps what it has.
+- **"Don't translate".** A Key marked "Don't translate" in Xcode is not sent and pull leaves it alone,
+  like an Android `translatable="false"` entry.
+- **Review states and comments.** Every value is sent whatever its review state ("Needs Review",
+  "New", "Stale"). Comments stay in the catalog and are not sent.
+- **Plurals.** A value that varies by plural syncs as a Plural in one of two shapes:
+  - a value that varies by plural as a whole (Xcode's **Vary by Plural**) is a Plural whose argument is
+    `count`: the forms `%lld item` and `%lld items` are sent as `{count, plural, one {# item} other {# items}}`;
+  - a value that is exactly one substitution such as `%#@items@`, whose substitution varies by plural
+    (the shape Xcode makes when it migrates a `.stringsdict`), is a Plural whose argument is the
+    substitution's name: `{items, plural, one {# item} other {# items}}`.
+
+  The categories are sent in CLDR order (`zero`, `one`, `two`, `few`, `many`, `other`), whatever their
+  order in the file. In the whole-value shape the number is any integer specifier (`%d`, `%i`, `%u`,
+  `%ld`, `%li`, `%lu`, `%lld`, `%lli`, `%llu`, with or without a position such as `%1$lld`) and
+  becomes `#`. In the substitution shape it is `%arg` or `%` plus the substitution's `formatSpecifier`.
+  Every other specifier, such as `%@`, is sent as written. Push gives no Android format specifier
+  warning for catalogs.
+- **Skipped values.** Push skips a value it cannot send, sends no value for that Key and Locale only,
+  and prints one of two warnings; the Key's other Locales are sent as usual:
+  - text around the substitution, several substitutions, or a substitution that does not vary by plural
+    (`You have %#@items@`):
+    `Skipped 'KEY' for 'LOCALE' in 'PATH': only a value that varies by plural as a whole, or is exactly one plural substitution such as '%#@items@', syncs as a Plural.`
+  - a value or substitution that varies by device, or nests one variation inside another:
+    `Skipped 'KEY' for 'LOCALE' in 'PATH': only plain text and values that vary by plural sync.`
+
+  A file that is not a JSON object with a `strings` object and a non-empty `sourceLanguage` is skipped with
+  `Skipped 'PATH': it is not a readable String Catalog.` The other files still sync.
+- **Pull changes only what differs.** For each catalog Origin with a local file, pull writes a value
+  only when the value from TranslationTools differs from the value push would send for that Key and
+  Locale. A value it changes or adds gets the state `Translated`. Comments, the "Don't translate" mark
+  and the review state of every other value stay as they are. A plain value is written as plain text,
+  and it replaces a local value that varied by plural. Pull leaves alone each Key and Locale push skips.
+- **Plural shapes on pull.** A Plural keeps the local value's shape: a value that varies by plural as a
+  whole gets the remote forms, a value that is one plural substitution keeps its substitution name,
+  `formatSpecifier` and `argNum` and gets the remote forms, and anything else (plain text, no local
+  value, a new Key) is written in the whole-value shape. Either way the value ends with exactly the
+  forms of the remote Plural, so a local category the remote lacks is removed. A remote `=0` form is
+  written as the `zero` category.
+- **`#` becomes the number token.** Pull writes `#` as the number token the same value already uses in
+  that Locale (`%d` stays `%d`). With no such token (a plain or missing local value) it uses the token
+  the Key's source-language value uses, and failing both `%lld` in the whole-value shape and `%arg`
+  in the substitution shape. A form that also holds a positional specifier such as `%2$@` gets the
+  token with `1$` (`%1$lld`).
+- **Kept-local warning.** When the value in TranslationTools is a Plural with an exact case other than
+  `=0` (such as `=1`), a String Catalog cannot hold it. Pull keeps the local value for that Key and
+  Locale, still writes the Key's other Locales, and prints
+  `Kept local 'KEY' in 'PATH': the value for 'LOCALE' in TranslationTools is not a Plural that a String Catalog can hold.`
+- **New Keys and Locales.** Pull adds a Key the catalog lacks, in every Locale TranslationTools has a
+  value for, with `extractionState: "manual"` as Xcode marks a Key added by hand, so a build does not
+  mark it Stale. A source-language value that equals the Key is left out, as Xcode does. When pull adds
+  a Locale that no Key of the catalog had before, it prints the `knownRegions` warning, as for
+  `.strings`, and writes the Locale code in Xcode's casing (`pt-BR`).
+- **Nothing is deleted, and no file is created.** A Key with no value in TranslationTools keeps its
+  local value. Pull never creates a String Catalog: an Origin with no local file is ignored.
+- **Xcode's layout.** Pull rewrites a catalog only when its content changes, and then writes the whole
+  file in Xcode's layout (two-space indentation, ` : ` between a name and its value, new members in
+  sorted order), so opening the file in Xcode and saving shows no further change. A catalog whose
+  content does not change is not touched, whatever its layout.
+- **Unreadable file.** A file that is not a readable String Catalog is left unchanged, with
+  `Left 'PATH' unchanged: it is not a readable String Catalog.`
 
 ## Migrate From Regular `strings.xml`
 

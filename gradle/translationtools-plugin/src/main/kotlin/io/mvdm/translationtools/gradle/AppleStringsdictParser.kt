@@ -25,7 +25,7 @@ internal const val RULE_TYPE_KEY = "NSStringFormatSpecTypeKey"
 internal const val PLURAL_RULE_TYPE = "NSStringPluralRuleType"
 internal const val VALUE_TYPE_KEY = "NSStringFormatValueTypeKey"
 
-private val wholeVariableFormat = Regex("%#@([^@]+)@")
+internal val wholeVariableFormat = Regex("%#@([^@]+)@")
 
 /** [path] only names the file in warnings; [bytes] is its content. */
 internal fun parseAppleStringsdict(bytes: ByteArray, path: String): ParsedAppleStringsdict

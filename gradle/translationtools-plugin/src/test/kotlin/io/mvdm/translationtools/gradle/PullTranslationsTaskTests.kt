@@ -12,6 +12,7 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -309,6 +310,182 @@ class PullTranslationsTaskTests
          assertTrue(plFile.readBytes().contentEquals(binary))
          assertTrue(result.output.contains("Left '${plFile.path}' unchanged: it is not a readable XML property list."), result.output)
          assertTrue(enFile.readText().contains("\t\t\t<string>%d things</string>\n"))
+         assertFalse(result.output.contains("Ignored pulled origin"), result.output)
+      }
+   }
+
+   @Test
+   fun pull_should_change_only_the_pulled_value_in_a_string_catalog_and_leave_an_unchanged_file_alone()
+   {
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en","pl"],"defaultLocale":"en"}""",
+         localeResponses = mapOf(
+            "en" to "[]",
+            "pl" to """[{"origin":":/Localizable.xcstrings","key":"Done","value":"Zrobione"}]""",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-catalog").toFile()
+         val catalog = writeCatalogProject(projectDir, xcodeLayoutFixture())
+
+         val result = runCatalogPull(projectDir, server)
+
+         val expected = xcodeLayoutFixture().replace(
+            "\"state\" : \"needs_review\",\n            \"value\" : \"Gotowe\"",
+            "\"state\" : \"translated\",\n            \"value\" : \"Zrobione\"",
+         )
+         assertEquals(expected, catalog.readText())
+         assertFalse(result.output.contains("Ignored pulled origin"), result.output)
+
+         val fixedTime = 1_000_000_000_000L
+         assertTrue(catalog.setLastModified(fixedTime))
+         runCatalogPull(projectDir, server)
+         assertEquals(fixedTime, catalog.lastModified())
+         assertEquals(expected, catalog.readText())
+      }
+   }
+
+   @Test
+   fun pull_should_replace_plurals_add_keys_and_locales_and_leave_protected_values_in_a_string_catalog()
+   {
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en","pl","pt-br"],"defaultLocale":"en"}""",
+         localeResponses = mapOf(
+            "en" to "[" + listOf(
+               catalogRemote("greeting", "Hello"),
+               catalogRemote("cart_items", "Cart"),
+               catalogRemote("device_hint", "Hint"),
+               catalogRemote("Don't translate me", "Nope"),
+               catalogRemote("Done", "Done"),
+               catalogRemote("inbox", "Inbox"),
+               catalogRemote("new_title", "New title"),
+               """{"origin":":/Other.xcstrings","key":"x","value":"y"}""",
+            ).joinToString(",") + "]",
+            "pl" to "[" + listOf(
+               catalogRemote("Done", null),
+               catalogRemote("greeting", null),
+               catalogRemote("new_title", "Nowy tytul"),
+            ).joinToString(",") + "]",
+            "pt-br" to "[" + listOf(catalogRemote("new_title", "Novo titulo"), catalogRemote("inbox", "Caixa")).joinToString(",") + "]",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-catalog-mixed").toFile()
+         val catalog = writeCatalogProject(projectDir, xcodeLayoutFixture())
+
+         val result = runCatalogPull(projectDir, server)
+
+         val before = (Json.parseToJsonElement(xcodeLayoutFixture()) as JsonObject).obj("strings")
+         val after = (Json.parseToJsonElement(catalog.readText()) as JsonObject).obj("strings")
+         assertEquals(
+            Json.parseToJsonElement("""{"stringUnit":{"state":"translated","value":"Cart"}}"""),
+            after.obj("cart_items", "localizations").getValue("en"),
+         )
+         assertEquals(before.obj("cart_items", "localizations").getValue("pl"), after.obj("cart_items", "localizations").getValue("pl"))
+         listOf("greeting", "device_hint", "Don't translate me", "file_count", "Done", "path/with slash").forEach { untouched ->
+            assertEquals(before.getValue(untouched), after.getValue(untouched), untouched)
+         }
+         assertEquals(
+            Json.parseToJsonElement(
+               """{"extractionState":"manual","localizations":{"en":{"stringUnit":{"state":"translated","value":"New title"}},""" +
+                  """"pl":{"stringUnit":{"state":"translated","value":"Nowy tytul"}},"pt-BR":{"stringUnit":{"state":"translated","value":"Novo titulo"}}}}""",
+            ),
+            after.getValue("new_title"),
+         )
+         assertEquals(listOf("en", "pt-BR"), after.obj("inbox", "localizations").keys.toList())
+         assertEquals(before.size + 2, after.size)
+         assertEquals(listOf("pt-br"), Regex("Added locale '([^']+)' to").findAll(result.output).map { it.groupValues[1] }.toList())
+         assertTrue(result.output.contains(newLocaleWarning("pt-br", catalog)), result.output)
+         assertFalse(result.output.contains("Kept local"), result.output)
+         assertFalse(File(projectDir, "ios/Other.xcstrings").exists())
+         assertFalse(result.output.contains("Ignored pulled origin ':/Localizable.xcstrings'"), result.output)
+      }
+   }
+
+   @Test
+   fun pull_should_write_a_remote_plural_into_a_string_catalog_in_the_local_shape_and_add_a_new_plural_key()
+   {
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en","pl"],"defaultLocale":"en"}""",
+         localeResponses = mapOf(
+            "en" to "[" + listOf(
+               catalogRemote("cart_items", "{count, plural, one {# item} other {# things}}"),
+               catalogRemote("inbox_messages", "{count, plural, one {# message} other {# messages}}"),
+            ).joinToString(",") + "]",
+            "pl" to "[]",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-catalog-plural").toFile()
+         val catalog = writeCatalogProject(projectDir, xcodeLayoutFixture())
+
+         val result = runCatalogPull(projectDir, server)
+
+         val before = (Json.parseToJsonElement(xcodeLayoutFixture()) as JsonObject).obj("strings")
+         val after = (Json.parseToJsonElement(catalog.readText()) as JsonObject).obj("strings")
+         val englishForms = after.obj("cart_items", "localizations", "en", "variations", "plural")
+         assertEquals(
+            Json.parseToJsonElement("""{"stringUnit":{"state":"translated","value":"%lld things"}}"""),
+            englishForms.getValue("other"),
+         )
+         assertEquals(
+            before.obj("cart_items", "localizations", "en", "variations", "plural").getValue("one"),
+            englishForms.getValue("one"),
+         )
+         assertEquals(before.obj("cart_items", "localizations").getValue("pl"), after.obj("cart_items", "localizations").getValue("pl"))
+         assertEquals(
+            Json.parseToJsonElement(
+               """{"extractionState":"manual","localizations":{"en":{"variations":{"plural":{"one":{"stringUnit":{"state":"translated","value":"%lld message"}},""" +
+                  """"other":{"stringUnit":{"state":"translated","value":"%lld messages"}}}}}}}""",
+            ),
+            after.getValue("inbox_messages"),
+         )
+         assertFalse(result.output.contains("Kept local"), result.output)
+      }
+   }
+
+   @Test
+   fun pull_should_keep_a_local_plural_and_warn_when_the_remote_plural_has_an_exact_case_and_still_write_other_values()
+   {
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en","pl"],"defaultLocale":"en"}""",
+         localeResponses = mapOf(
+            "en" to "[" + catalogRemote("cart_items", "{count, plural, =1 {one item} other {# items}}") + "]",
+            "pl" to "[" + catalogRemote("Done", "Zrobione") + "]",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-catalog-exact").toFile()
+         val catalog = writeCatalogProject(projectDir, xcodeLayoutFixture())
+
+         val result = runCatalogPull(projectDir, server)
+
+         assertTrue(
+            result.output.contains(
+               "Kept local 'cart_items' in '${catalog.path}': the value for 'en' in TranslationTools is not a Plural that a String Catalog can hold.",
+            ),
+            result.output,
+         )
+         assertEquals(
+            xcodeLayoutFixture().replace(
+               "\"state\" : \"needs_review\",\n            \"value\" : \"Gotowe\"",
+               "\"state\" : \"translated\",\n            \"value\" : \"Zrobione\"",
+            ),
+            catalog.readText(),
+         )
+      }
+   }
+
+   @Test
+   fun pull_should_leave_an_unreadable_string_catalog_unchanged_and_say_so()
+   {
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en"],"defaultLocale":"en"}""",
+         localeResponses = mapOf("en" to "[" + catalogRemote("Done", "Done now") + "]"),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-catalog-unreadable").toFile()
+         val catalog = writeCatalogProject(projectDir, "not json")
+
+         val result = runCatalogPull(projectDir, server)
+
+         assertEquals("not json", catalog.readText())
+         assertTrue(result.output.contains("Left '${catalog.path}' unchanged: it is not a readable String Catalog."), result.output)
          assertFalse(result.output.contains("Ignored pulled origin"), result.output)
       }
    }
@@ -729,3 +906,24 @@ private fun runPull(projectDir: File, locales: List<String>, remoteByLocale: Map
 
    task.pull()
 }
+
+private fun catalogRemote(key: String, value: String?): String =
+   """{"origin":":/Localizable.xcstrings","key":${Json.encodeToString(kotlinx.serialization.serializer<String>(), key)},"value":${value?.let { Json.encodeToString(kotlinx.serialization.serializer<String>(), it) }}}"""
+
+private fun writeCatalogProject(projectDir: File, content: String): File
+{
+   writeNonKmpBuildFiles(projectDir)
+   writeStandardTestFixtures(projectDir, appleResourceDirectories = listOf("ios"))
+   File(projectDir, "ios").mkdirs()
+   return File(projectDir, "ios/Localizable.xcstrings").also { it.writeText(content) }
+}
+
+private fun runCatalogPull(projectDir: File, server: MockTranslationToolsServer) =
+   GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withPluginClasspath()
+      .withArguments("pullTranslations", "-Ptranslationtools.baseUrl=${server.baseUrl}")
+      .build()
+      .also { assertEquals(TaskOutcome.SUCCESS, it.task(":pullTranslations")?.outcome) }
+
+private fun JsonObject.obj(vararg path: String): JsonObject = path.fold(this) { node, name -> node.getValue(name) as JsonObject }

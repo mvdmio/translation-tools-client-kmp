@@ -12,6 +12,7 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -124,6 +125,187 @@ class PushTranslationsTaskTests
             Triple(":/Localizable.strings", "cart_items", "Cart"),
             Triple(":/Localizable.stringsdict", "cart_items", "{items, plural, one {# item} other {# items}}"),
             Triple(":/strings.xml", "home_title", "Home"),
+         ),
+         sent,
+      )
+   }
+
+   @Test
+   fun push_should_send_string_catalog_values_as_their_own_origin_next_to_strings_and_android_items()
+   {
+      val projectDir = createTempDirectory("translationtools-push-xcstrings").toFile()
+      File(projectDir, "res/values").mkdirs()
+      File(projectDir, "res/values/strings.xml").writeText(
+         "<resources><string name=\"home_title\">Home</string></resources>"
+      )
+      File(projectDir, "ios/en.lproj").mkdirs()
+      File(projectDir, "ios/en.lproj/Localizable.strings").writeText("\"Done\" = \"Finished\";")
+      File(projectDir, "ios/Localizable.xcstrings").writeText(
+         """
+         {
+           "sourceLanguage" : "en",
+           "strings" : {
+             "Done" : {
+               "localizations" : {
+                 "pl" : { "stringUnit" : { "state" : "translated", "value" : "Gotowe" } }
+               }
+             },
+             "greeting" : {
+               "comment" : "Shown on the home screen",
+               "localizations" : {
+                 "en" : { "stringUnit" : { "state" : "needs_review", "value" : "Hello" } }
+               }
+             },
+             "brand" : {
+               "shouldTranslate" : false,
+               "localizations" : {
+                 "en" : { "stringUnit" : { "state" : "translated", "value" : "Acme" } }
+               }
+             }
+           },
+           "version" : "1.0"
+         }
+         """.trimIndent()
+      )
+
+      var capturedBody = ""
+      val client = createHttpClient(
+         MockEngine { request ->
+            capturedBody = (request.body as TextContent).text
+            respond(
+               content = """{"receivedKeyCount":7,"createdKeyCount":7,"updatedKeyCount":0,"removedKeyCount":0}""",
+               status = HttpStatusCode.OK,
+               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+         }
+      )
+
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
+      task.apiKey.set("test-key")
+      task.defaultLocale.set("en")
+      task.resourceDirectories.from(File(projectDir, "res"))
+      task.appleResourceDirectories.from(File(projectDir, "ios"))
+      task.keyOverrides.set(emptyMap())
+      task.projectPathInput.set(project.path)
+      task.baseUrl.set(BASE_URL)
+      task.httpClientFactory = { client }
+
+      task.push()
+
+      val sent = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+         .map { it.jsonObject }
+         .map { item ->
+            listOf("origin", "locale", "key").joinToString("|") { item.getValue(it).jsonPrimitive.content } to
+               item.getValue("value").jsonPrimitive.contentOrNull
+         }
+      assertEquals(
+         listOf(
+            ":/Localizable.strings|en|Done" to "Finished",
+            ":/Localizable.strings|pl|Done" to null,
+            ":/Localizable.xcstrings|en|Done" to "Done",
+            ":/Localizable.xcstrings|en|greeting" to "Hello",
+            ":/Localizable.xcstrings|pl|Done" to "Gotowe",
+            ":/Localizable.xcstrings|pl|greeting" to null,
+            ":/strings.xml|en|home_title" to "Home",
+         ),
+         sent,
+      )
+   }
+
+   @Test
+   fun push_should_send_string_catalog_plurals_in_both_shapes_and_null_for_a_skipped_value_only()
+   {
+      val projectDir = createTempDirectory("translationtools-push-xcstrings-plurals").toFile()
+      File(projectDir, "res/values").mkdirs()
+      File(projectDir, "res/values/strings.xml").writeText("<resources></resources>")
+      File(projectDir, "ios").mkdirs()
+      File(projectDir, "ios/Localizable.xcstrings").writeText(
+         """
+         {
+           "sourceLanguage" : "en",
+           "strings" : {
+             "cart_items" : {
+               "localizations" : {
+                 "en" : { "variations" : { "plural" : {
+                   "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld items" } },
+                   "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld item" } }
+                 } } },
+                 "pl" : { "variations" : { "plural" : {
+                   "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld rzeczy" } },
+                   "many" : { "stringUnit" : { "state" : "translated", "value" : "%lld rzeczy" } },
+                   "few" : { "stringUnit" : { "state" : "translated", "value" : "%lld rzeczy" } },
+                   "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld rzecz" } }
+                 } } }
+               }
+             },
+             "migrated" : {
+               "localizations" : {
+                 "en" : {
+                   "stringUnit" : { "state" : "translated", "value" : "%#@items@" },
+                   "substitutions" : { "items" : { "formatSpecifier" : "d", "variations" : { "plural" : {
+                     "one" : { "stringUnit" : { "state" : "translated", "value" : "%arg item" } },
+                     "other" : { "stringUnit" : { "state" : "translated", "value" : "%d items" } }
+                   } } } }
+                 }
+               }
+             },
+             "mixed" : {
+               "localizations" : {
+                 "en" : {
+                   "stringUnit" : { "state" : "translated", "value" : "You have %#@items@" },
+                   "substitutions" : { "items" : { "formatSpecifier" : "d", "variations" : { "plural" : {
+                     "other" : { "stringUnit" : { "state" : "translated", "value" : "%d items" } }
+                   } } } }
+                 },
+                 "pl" : { "stringUnit" : { "state" : "translated", "value" : "Mieszane" } }
+               }
+             }
+           },
+           "version" : "1.0"
+         }
+         """.trimIndent()
+      )
+
+      var capturedBody = ""
+      val client = createHttpClient(
+         MockEngine { request ->
+            capturedBody = (request.body as TextContent).text
+            respond(
+               content = """{"receivedKeyCount":6,"createdKeyCount":6,"updatedKeyCount":0,"removedKeyCount":0}""",
+               status = HttpStatusCode.OK,
+               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+         }
+      )
+
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
+      task.apiKey.set("test-key")
+      task.defaultLocale.set("en")
+      task.resourceDirectories.from(File(projectDir, "res"))
+      task.appleResourceDirectories.from(File(projectDir, "ios"))
+      task.keyOverrides.set(emptyMap())
+      task.projectPathInput.set(project.path)
+      task.baseUrl.set(BASE_URL)
+      task.httpClientFactory = { client }
+
+      task.push()
+
+      val sent = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+         .map { it.jsonObject }
+         .map { item ->
+            listOf("origin", "locale", "key").joinToString("|") { item.getValue(it).jsonPrimitive.content } to
+               item.getValue("value").jsonPrimitive.contentOrNull
+         }
+      assertEquals(
+         listOf(
+            ":/Localizable.xcstrings|en|cart_items" to "{count, plural, one {# item} other {# items}}",
+            ":/Localizable.xcstrings|en|migrated" to "{items, plural, one {# item} other {# items}}",
+            ":/Localizable.xcstrings|en|mixed" to null,
+            ":/Localizable.xcstrings|pl|cart_items" to "{count, plural, one {# rzecz} few {# rzeczy} many {# rzeczy} other {# rzeczy}}",
+            ":/Localizable.xcstrings|pl|migrated" to null,
+            ":/Localizable.xcstrings|pl|mixed" to "Mieszane",
          ),
          sent,
       )

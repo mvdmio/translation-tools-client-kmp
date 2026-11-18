@@ -68,6 +68,7 @@ abstract class PushTranslationsTask : DefaultTask()
           val appleProject = if (inputs.appleDirectories.isNotEmpty())
              appleParser.parse(inputs.appleDirectories, inputs.defaultLocale, inputs.projectPath).also { parsed ->
                 parsed.warnings.forEach { warning -> logger.warn(warning) }
+                parsed.details.forEach { detail -> logger.warn(detail) }
              }
           else
              null

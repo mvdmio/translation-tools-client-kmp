@@ -6,6 +6,8 @@ internal data class AppleTranslationProject(
    val locales: List<String>,
    val entries: List<AppleTranslationEntry>,
    val warnings: List<String>,
+   /** Why a file could not be read, to log next to the warnings; kept apart because a warning's text is fixed. */
+   val details: List<String> = emptyList(),
 )
 
 internal data class AppleTranslationEntry(
@@ -30,8 +32,10 @@ internal data class AppleResourceVariantFile(
    val kind: AppleResourceKind,
 )
 
+/** [catalogs] are the String Catalog (`.xcstrings`) files that sit directly in a resource directory, sorted by path. */
 internal data class AppleResourceDiscovery(
    val files: List<AppleResourceVariantFile>,
+   val catalogs: List<File>,
    val warnings: List<String>,
 )
 

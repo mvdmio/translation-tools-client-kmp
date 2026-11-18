@@ -94,12 +94,12 @@ private const val NEW_ENTRY_VALUE_TYPE = "lld"
 private const val UNNAMED_VALUE_TYPE = "d"
 
 /** A remote Plural a `.stringsdict` entry can hold: its [argument] and the [forms] by category, in CLDR order. */
-private data class HoldablePlural(val argument: String, val forms: List<HoldableForm>)
+internal data class HoldablePlural(val argument: String, val forms: List<HoldableForm>)
 
-private data class HoldableForm(val quantity: PluralQuantity, val text: String, val numberHashes: List<Int>)
+internal data class HoldableForm(val quantity: PluralQuantity, val text: String, val numberHashes: List<Int>)
 
 /** [value] as a Plural whose cases are categories or `=0` (written as `zero`), or null for anything else. */
-private fun holdablePlural(value: String): HoldablePlural?
+internal fun holdablePlural(value: String): HoldablePlural?
 {
    val plural = parsePluralValue(value) ?: return null
    val forms = plural.cases.map { case ->
@@ -166,7 +166,7 @@ private fun pluralQuantityOf(key: String): PluralQuantity? = PluralQuantity.entr
  * The form text with each unquoted `#` written as `%` plus [valueType]; `%1$` plus [valueType] when the form also holds a
  * positional specifier such as `%2$@`.
  */
-private fun HoldableForm.render(valueType: String): String
+internal fun HoldableForm.render(valueType: String): String
 {
    if (numberHashes.isEmpty())
       return text

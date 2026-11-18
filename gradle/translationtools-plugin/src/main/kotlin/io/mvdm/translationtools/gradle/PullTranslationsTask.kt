@@ -93,9 +93,11 @@ abstract class PullTranslationsTask : DefaultTask()
             val appleOrigins = appleDiscovery?.files.orEmpty()
                .map { buildOrigin(inputs.projectPath, it.relativeBaseFile) }
                .toSet()
+            val catalogFilesByOrigin = appleDiscovery?.catalogs.orEmpty().groupBy { buildOrigin(inputs.projectPath, it.name) }
 
-            remote.items.groupBy { it.origin }.forEach { (origin, entries) ->
-               if (origin in appleOrigins)
+            val remoteItemsByOrigin = remote.items.groupBy { it.origin }
+            remoteItemsByOrigin.forEach { (origin, entries) ->
+               if (origin in appleOrigins || origin in catalogFilesByOrigin)
                   return@forEach
 
                val mapped = byOrigin[origin]
@@ -131,6 +133,7 @@ abstract class PullTranslationsTask : DefaultTask()
 
             if (appleDiscovery != null) {
                writeAppleTranslations(appleDiscovery, inputs.appleDirectories, remote, appleOrigins, effectiveLocales, inputs.projectPath, normalizeAppleLocale(inputs.defaultLocale))
+               writeAppleCatalogs(catalogFilesByOrigin, remoteItemsByOrigin)
             }
          }
          catch (exception: PullTranslationsException) {
@@ -143,6 +146,15 @@ abstract class PullTranslationsTask : DefaultTask()
 
       logger.lifecycle("Loaded config from translationtools.yaml")
       logger.lifecycle("Pulled translations into Android XML resources.")
+   }
+
+   private fun writeAppleCatalogs(catalogFilesByOrigin: Map<String, List<File>>, remoteItemsByOrigin: Map<String, List<PulledTranslationItem>>)
+   {
+      remoteItemsByOrigin.forEach { (origin, items) ->
+         catalogFilesByOrigin[origin]?.forEach { file ->
+            writeAppleCatalogFile(file, items) { detail -> logger.warn(detail) }.forEach { warning -> logger.warn(warning) }
+         }
+      }
    }
 
    private fun writeAppleTranslations(

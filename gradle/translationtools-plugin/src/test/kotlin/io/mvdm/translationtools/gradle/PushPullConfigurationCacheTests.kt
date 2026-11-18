@@ -1,5 +1,10 @@
 package io.mvdm.translationtools.gradle
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import java.io.File
@@ -114,6 +119,61 @@ class PushPullConfigurationCacheTests
          assertEquals(TaskOutcome.SUCCESS, second.task(":pullTranslations")?.outcome)
          assertTrue(second.output.contains("Reusing configuration cache."), second.output)
          assertTrue(written.contentEquals(stringsdict.readBytes()))
+      }
+   }
+
+   @Test
+   fun push_and_pull_with_a_string_catalog_should_send_its_values_and_write_pulled_plurals_under_configuration_cache()
+   {
+      MockTranslationToolsServer(
+         pushResponse = """{"receivedKeyCount":2,"createdKeyCount":2,"updatedKeyCount":0,"removedKeyCount":0}""",
+         localeResponses = mapOf(
+            "en" to """[{"origin":":/Localizable.xcstrings","key":"cart_items","value":"{count, plural, one {# item} other {# things}}"}]""",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-catalog-cc").toFile()
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, appleResourceDirectories = listOf("ios"))
+         val catalog = File(projectDir, "ios/Localizable.xcstrings")
+         catalog.parentFile.mkdirs()
+         catalog.writeText(xcodeLayoutFixture())
+
+         val push = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, push.task(":pushTranslations")?.outcome)
+         val sent = Json.parseToJsonElement(server.pushBodies.last()).jsonObject.getValue("items").jsonArray
+            .filter { it.jsonObject.getValue("origin").jsonPrimitive.content == ":/Localizable.xcstrings" }
+            .associate {
+               val item = it.jsonObject
+               (item.getValue("key").jsonPrimitive.content + "/" + item.getValue("locale").jsonPrimitive.content) to
+                  item.getValue("value").let { value -> if (value is JsonNull) null else value.jsonPrimitive.content }
+            }
+         assertEquals(
+            mapOf(
+               "Done/en" to "Done",
+               "cart_items/en" to "{count, plural, one {# item} other {# items}}",
+               "device_hint/en" to null,
+               "file_count/en" to "{files, plural, one {# file} other {# files}}",
+               "greeting/en" to "Hello",
+               "path/with slash/en" to "Open \"files\" in a/b \\ c",
+               "Done/pl" to "Gotowe",
+               "cart_items/pl" to "{count, plural, one {# rzecz} few {# rzeczy} many {# rzeczy} other {# rzeczy}}",
+               "device_hint/pl" to null,
+               "file_count/pl" to null,
+               "greeting/pl" to null,
+               "path/with slash/pl" to "Otwórz pliki – zażółć gęślą jaźń",
+            ),
+            sent,
+         )
+
+         val first = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, first.task(":pullTranslations")?.outcome)
+         assertEquals(xcodeLayoutFixture().replace("\"value\" : \"%lld items\"", "\"value\" : \"%lld things\""), catalog.readText())
+         val written = catalog.readBytes()
+
+         val second = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, second.task(":pullTranslations")?.outcome)
+         assertTrue(second.output.contains("Reusing configuration cache."), second.output)
+         assertTrue(written.contentEquals(catalog.readBytes()))
       }
    }
 
