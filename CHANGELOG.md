@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-18: Apple .stringsdict plurals
+
+Version 3.4.0 syncs Apple `.stringsdict` plurals as Plurals. `pushTranslations` reads every `.stringsdict` file in the `.lproj` directories under `appleResources.resourceDirectories` and sends each entry whose format string is exactly one plural variable, such as `%#@items@`, as a Plural named after that variable, with the number's own specifier written as `#`. Each file is its own Origin (`:/Localizable.stringsdict`). Entries that cannot sync, and files that are not readable XML property lists, are skipped with a warning.
+
+`pullTranslations` writes the Plurals back into the same files. It replaces the forms of an entry that already exists and keeps its variable name, value type, and position, appends new Keys after the existing ones, and writes `#` back as the entry's value type. A value TranslationTools holds that no `.stringsdict` entry can hold keeps the local entry and warns, and an unreadable file is left unchanged. The file is written the way Xcode writes it, tab-indented, so an unchanged pull leaves it byte for byte the same. A new Locale gets a created file and the `knownRegions` warning. `.stringsdict` files stay sync-only: no `Translations.*` reference, no bundled snapshot, no runtime refresh.
+
 ## 2026-11-18: Plurals
 
 Version 3.3.0 renders Plurals. A Plural is a translation value with one whole sentence per plural form, such as `{count, plural, one {# item} other {# items}}`. Pass the number with `client.withPlaceholders(Translations.cart_items, "pl").setPluralNumber(22)` and the client shows the one sentence that number picks, by the CLDR plural rules of the Locale. `withPlaceholders` now also takes a `Translations.*` reference.

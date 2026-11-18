@@ -90,7 +90,9 @@ abstract class PullTranslationsTask : DefaultTask()
 
             val appleDiscovery = if (inputs.appleDirectories.isNotEmpty()) discoverAppleLocaleFiles(inputs.appleDirectories, inputs.defaultLocale) else null
             appleDiscovery?.warnings?.forEach { warning -> logger.warn(warning) }
-            val appleOrigins = appleDiscovery?.files.orEmpty().map { buildOrigin(inputs.projectPath, it.relativeBaseFile) }.toSet()
+            val appleOrigins = appleDiscovery?.files.orEmpty()
+               .map { buildOrigin(inputs.projectPath, it.relativeBaseFile) }
+               .toSet()
 
             remote.items.groupBy { it.origin }.forEach { (origin, entries) ->
                if (origin in appleOrigins)
@@ -128,7 +130,7 @@ abstract class PullTranslationsTask : DefaultTask()
             }
 
             if (appleDiscovery != null) {
-               writeAppleTranslations(appleDiscovery, inputs.appleDirectories, remote, appleOrigins, effectiveLocales, inputs.projectPath)
+               writeAppleTranslations(appleDiscovery, inputs.appleDirectories, remote, appleOrigins, effectiveLocales, inputs.projectPath, normalizeAppleLocale(inputs.defaultLocale))
             }
          }
          catch (exception: PullTranslationsException) {
@@ -150,16 +152,20 @@ abstract class PullTranslationsTask : DefaultTask()
       appleOrigins: Set<String>,
       effectiveLocales: List<String>,
       projectPath: String,
+      defaultLocale: String,
    )
    {
       val variantByOriginLocale = appleDiscovery.files.associateBy { buildOrigin(projectPath, it.relativeBaseFile) to it.locale }
       val filenameByOrigin = appleDiscovery.files.associate { buildOrigin(projectPath, it.relativeBaseFile) to it.relativeBaseFile }
+      val kindByOrigin = appleDiscovery.files.associate { buildOrigin(projectPath, it.relativeBaseFile) to it.kind }
       val rootByFilename = appleDiscovery.files.groupBy { it.relativeBaseFile }.mapValues { it.value.first().resourceDirectory }
       val defaultRoot = appleDirectories.first()
 
       remote.items.filter { it.origin in appleOrigins }.groupBy { it.origin }.forEach { (origin, entries) ->
          val filename = filenameByOrigin[origin] ?: origin.substringAfterLast("/")
          val root = rootByFilename[filename] ?: defaultRoot
+         val kind = kindByOrigin.getValue(origin)
+         val defaultValueTypes = if (kind == AppleResourceKind.STRINGSDICT) stringsdictValueTypes(variantByOriginLocale[origin to defaultLocale]?.file) else emptyMap()
 
          effectiveLocales.forEach { locale ->
             val updates = entries
@@ -172,7 +178,14 @@ abstract class PullTranslationsTask : DefaultTask()
                return@forEach
 
             val targetFile = existingVariant?.file ?: File(root, "${toLprojDirectory(locale)}/$filename")
-            val created = writeAppleStringsFile(targetFile, updates)
+            val created = when (kind) {
+               AppleResourceKind.STRINGS -> writeAppleStringsFile(targetFile, updates)
+               AppleResourceKind.STRINGSDICT -> {
+                  val written = writeAppleStringsdictFile(targetFile, locale, updates, defaultValueTypes)
+                  written.warnings.forEach { warning -> logger.warn(warning) }
+                  written.created
+               }
+            }
             if (created)
                logger.warn("Created '${targetFile.path}' for locale '$locale'. Add '$locale' (or its region) to your Xcode project's knownRegions to bundle it.")
          }

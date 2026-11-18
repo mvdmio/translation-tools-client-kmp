@@ -13,6 +13,15 @@ import kotlin.test.assertNull
 class PluralValueTests
 {
    @Test
+   fun composePluralValue_should_name_the_argument_and_write_forms_in_cldr_order()
+   {
+      val items = listOf(AndroidPluralItem(PluralQuantity.OTHER, "# items"), AndroidPluralItem(PluralQuantity.ONE, "# item"))
+
+      assertEquals("{items, plural, one {# item} other {# items}}", composePluralValue("items", items))
+      assertEquals("{count, plural, one {# item} other {# items}}", composePluralValue("count", items))
+   }
+
+   @Test
    fun pluralValueToAndroidItems_should_return_raw_form_text_in_cldr_order_ignoring_whitespace_and_argument_name()
    {
       val items = pluralValueToAndroidItems("{ n ,plural,\n  other {it''s # of {cartName} '#' '{x}'}  one{# item}\t}")
@@ -59,6 +68,21 @@ class PluralValueTests
    }
 
    @Test
+   fun parsePluralValue_should_report_the_argument_and_where_the_unquoted_number_hash_stands()
+   {
+      val plural = parsePluralValue("{items, plural, one {# of '#' and {cartName}: #} other {''# items}}")
+
+      assertEquals("items", plural?.argument)
+      assertEquals(
+         listOf(
+            PluralCase(PluralSelector.Category(PluralQuantity.ONE), "# of '#' and {cartName}: #", listOf(0, 25)),
+            PluralCase(PluralSelector.Category(PluralQuantity.OTHER), "''# items", listOf(2)),
+         ),
+         plural?.cases,
+      )
+   }
+
+   @Test
    fun parsePluralValue_should_agree_with_the_server_examples_the_runtime_client_is_pinned_to()
    {
       // The runtime client's PluralParseExamplesTests runs this same file, so both readers answer to one fixture.
@@ -71,7 +95,7 @@ class PluralValueTests
          val expectedSelectors = if (expected is JsonNull) null
          else expected.jsonObject.getValue("cases").jsonArray.map { it.jsonObject.getValue("selector").jsonPrimitive.content }
 
-         val selectors = parsePluralValue(input)?.map {
+         val selectors = parsePluralValue(input)?.cases?.map {
             when (val selector = it.selector) {
                is PluralSelector.Exact -> "=${selector.digits}"
                is PluralSelector.Category -> selector.quantity.keyword

@@ -153,7 +153,113 @@ class AppleStringResourceParserTests
       val project = AppleStringResourceParser().parse(listOf(root), defaultLocale = "en", projectPath = ":")
 
       assertEquals(emptyList(), project.entries)
-      assertTrue(project.warnings.any { it.contains("No .lproj directories") })
+      assertEquals(
+         listOf("No .lproj directories with .strings or .stringsdict files were found under the configured appleResources.resourceDirectories."),
+         project.warnings,
+      )
+   }
+
+   @Test
+   fun discoverAppleLocaleFiles_should_find_stringsdict_files_next_to_strings_files_by_kind()
+   {
+      val root = createTempDirectory("translationtools-apple-kinds").toFile()
+      writeStrings(root, "en.lproj", "Localizable.strings", "\"k\" = \"v\";")
+      writeStrings(root, "en.lproj", "Localizable.stringsdict", stringsdictPlist())
+      writeStrings(root, "en.lproj", "Notes.txt", "ignored")
+
+      val discovery = discoverAppleLocaleFiles(listOf(root), "en")
+
+      assertEquals(
+         listOf("Localizable.strings" to AppleResourceKind.STRINGS, "Localizable.stringsdict" to AppleResourceKind.STRINGSDICT),
+         discovery.files.map { it.relativeBaseFile to it.kind },
+      )
+   }
+
+   @Test
+   fun discoverAppleLocaleFiles_should_decide_base_versus_explicit_per_file_name()
+   {
+      val root = createTempDirectory("translationtools-apple-base-kinds").toFile()
+      writeStrings(root, "Base.lproj", "Localizable.strings", "\"k\" = \"From Base\";")
+      writeStrings(root, "Base.lproj", "Localizable.stringsdict", stringsdictPlist())
+      writeStrings(root, "en.lproj", "Localizable.stringsdict", stringsdictPlist())
+
+      val discovery = discoverAppleLocaleFiles(listOf(root), "en")
+
+      assertEquals(
+         listOf("Base.lproj/Localizable.strings", "en.lproj/Localizable.stringsdict"),
+         discovery.files.map { "${it.file.parentFile.name}/${it.file.name}" },
+      )
+      assertEquals(
+         listOf("Both Base.lproj and an explicit 'en' .lproj define 'Localizable.stringsdict'. Using the explicit locale directory."),
+         discovery.warnings,
+      )
+   }
+
+   @Test
+   fun parse_should_keep_a_stringsdict_file_and_a_strings_file_with_the_same_key_as_separate_refs()
+   {
+      val root = createTempDirectory("translationtools-apple-two-kinds").toFile()
+      writeStrings(root, "en.lproj", "Localizable.strings", "\"cart_items\" = \"Cart\";")
+      writeStrings(
+         root,
+         "en.lproj",
+         "Localizable.stringsdict",
+         stringsdictPlist(pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items")),
+      )
+
+      val project = AppleStringResourceParser().parse(listOf(root), defaultLocale = "en", projectPath = ":")
+
+      assertEquals(
+         mapOf(
+            ":/Localizable.strings" to "Cart",
+            ":/Localizable.stringsdict" to "{items, plural, one {# item} other {# items}}",
+         ),
+         project.entries.associate { it.origin to it.valuesByLocale["en"] },
+      )
+      assertEquals(emptyList(), project.warnings)
+   }
+
+   @Test
+   fun parse_should_send_a_locale_without_the_stringsdict_entry_as_no_value()
+   {
+      val root = createTempDirectory("translationtools-apple-missing-form").toFile()
+      writeStrings(
+         root,
+         "en.lproj",
+         "Localizable.stringsdict",
+         stringsdictPlist(pluralEntry("cart_items", "items", "d", "other" to "%d items")),
+      )
+      writeStrings(root, "de.lproj", "Localizable.stringsdict", stringsdictPlist())
+
+      val project = AppleStringResourceParser().parse(listOf(root), defaultLocale = "en", projectPath = ":")
+
+      assertEquals(listOf("de", "en"), project.locales)
+      assertEquals(
+         mapOf("de" to null, "en" to "{items, plural, other {# items}}"),
+         project.entries.single().valuesByLocale,
+      )
+   }
+
+   @Test
+   fun parse_should_warn_about_an_unreadable_stringsdict_file_and_give_it_no_locale_or_values()
+   {
+      val root = createTempDirectory("translationtools-apple-unreadable").toFile()
+      writeStrings(
+         root,
+         "en.lproj",
+         "Localizable.stringsdict",
+         stringsdictPlist(pluralEntry("cart_items", "items", "d", "other" to "%d items")),
+      )
+      writeStrings(root, "pl.lproj", "Localizable.stringsdict", "bplist00 not xml")
+
+      val project = AppleStringResourceParser().parse(listOf(root), defaultLocale = "en", projectPath = ":")
+
+      assertEquals(
+         listOf("Skipped '${File(root, "pl.lproj/Localizable.stringsdict").path}': it is not a readable XML property list."),
+         project.warnings,
+      )
+      assertEquals(listOf("en"), project.locales)
+      assertEquals(mapOf("en" to "{items, plural, other {# items}}"), project.entries.single().valuesByLocale)
    }
 
    @Test

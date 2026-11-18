@@ -74,12 +74,46 @@ class PushPullConfigurationCacheTests
          File(projectDir, "ios/en.lproj/InfoPlist.strings").writeText(
             "\"NSCameraUsageDescription\" = \"Camera\";",
          )
+         File(projectDir, "ios/en.lproj/Localizable.stringsdict").writeText(
+            stringsdictPlist(pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items")),
+         )
 
          val result = runWithConfigurationCache(projectDir, "pushTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
          assertTrue(server.pushBodies.isNotEmpty())
          assertTrue(server.pushBodies.last().contains("InfoPlist.strings"))
          assertTrue(server.pushBodies.last().contains("NSCameraUsageDescription"))
+         assertTrue(server.pushBodies.last().contains(":/Localizable.stringsdict"))
+         assertTrue(server.pushBodies.last().contains("{items, plural, one {# item} other {# items}}"))
+      }
+   }
+
+   @Test
+   fun pullTranslations_with_appleResources_should_write_stringsdict_plurals_under_configuration_cache()
+   {
+      MockTranslationToolsServer(
+         localeResponses = mapOf(
+            "en" to """[{"origin":":/Localizable.stringsdict","key":"cart_items","value":"{items, plural, one {# item} other {# things}}"}]""",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-apple-cc").toFile()
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, appleResourceDirectories = listOf("ios"))
+         val stringsdict = File(projectDir, "ios/en.lproj/Localizable.stringsdict")
+         stringsdict.parentFile.mkdirs()
+         stringsdict.writeText(
+            stringsdictPlist(pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items")),
+         )
+
+         val first = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, first.task(":pullTranslations")?.outcome)
+         assertTrue(stringsdict.readText().contains("\t\t\t<string>%d things</string>\n"))
+         val written = stringsdict.readBytes()
+
+         val second = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
+         assertEquals(TaskOutcome.SUCCESS, second.task(":pullTranslations")?.outcome)
+         assertTrue(second.output.contains("Reusing configuration cache."), second.output)
+         assertTrue(written.contentEquals(stringsdict.readBytes()))
       }
    }
 

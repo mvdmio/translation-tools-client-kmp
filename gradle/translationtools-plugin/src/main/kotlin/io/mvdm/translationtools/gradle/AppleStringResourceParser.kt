@@ -13,7 +13,7 @@ internal data class ParsedAppleStringsFile(
 )
 
 /**
- * Parses Apple `.strings` files into the shared `(origin, key, locale)` translation model.
+ * Parses Apple `.strings` and `.stringsdict` files into the shared `(origin, key, locale)` translation model.
  *
  * Apple `.strings` are an independent second source of truth alongside Android XML: every
  * discovered key is managed remotely, no typed accessors are generated, and the files in the
@@ -30,22 +30,23 @@ internal class AppleStringResourceParser
       val discovery = discoverAppleLocaleFiles(resourceDirectories, defaultLocale)
       val warnings = discovery.warnings.toMutableList()
       if (discovery.files.isEmpty()) {
-         warnings += "No .lproj directories with .strings files were found under the configured appleResources.resourceDirectories."
+         warnings += "No .lproj directories with .strings or .stringsdict files were found under the configured appleResources.resourceDirectories."
          return AppleTranslationProject(locales = emptyList(), entries = emptyList(), warnings = warnings)
       }
 
       val collected = linkedMapOf<Pair<String, String>, MutableMap<String, String?>>()
+      val readableLocales = mutableSetOf<String>()
       discovery.files.forEach { variant ->
-         val parsed = parseAppleStringsContent(decodeAppleStrings(variant.file.readBytes()))
-         warnings += parsed.warnings.map { "${variant.file.path}: $it" }
+         val values = readVariantValues(variant, warnings) ?: return@forEach
+         readableLocales += variant.locale
 
          val origin = buildOrigin(projectPath, variant.relativeBaseFile)
-         parsed.entries.forEach { entry ->
-            collected.getOrPut(origin to entry.key) { linkedMapOf() }[variant.locale] = entry.value
+         values.forEach { (key, value) ->
+            collected.getOrPut(origin to key) { linkedMapOf() }[variant.locale] = value
          }
       }
 
-      val locales = discovery.files.map { it.locale }.distinct().sorted()
+      val locales = readableLocales.sorted()
       val entries = collected
          .toSortedMap(compareBy<Pair<String, String>> { it.first }.thenBy { it.second })
          .map { (ref, perLocale) ->
@@ -57,6 +58,31 @@ internal class AppleStringResourceParser
          }
 
       return AppleTranslationProject(locales = locales, entries = entries, warnings = warnings)
+   }
+
+   /** The pushed value of each key in [variant], or null (after a warning) for a `.stringsdict` file that cannot be read. */
+   private fun readVariantValues(variant: AppleResourceVariantFile, warnings: MutableList<String>): Map<String, String>?
+   {
+      val bytes = variant.file.readBytes()
+      return when (variant.kind) {
+         AppleResourceKind.STRINGS -> {
+            val parsed = parseAppleStringsContent(decodeAppleStrings(bytes))
+            warnings += parsed.warnings.map { "${variant.file.path}: $it" }
+            parsed.entries.associate { it.key to it.value }
+         }
+
+         AppleResourceKind.STRINGSDICT -> when (val parsed = parseAppleStringsdict(bytes, variant.file.path)) {
+            is ParsedAppleStringsdict.Readable -> {
+               warnings += parsed.warnings
+               parsed.entries.associate { it.key to it.toPluralValue() }
+            }
+
+            is ParsedAppleStringsdict.Unreadable -> {
+               warnings += parsed.warning
+               null
+            }
+         }
+      }
    }
 }
 
@@ -77,16 +103,19 @@ internal fun discoverAppleLocaleFiles(resourceDirectories: List<File>, defaultLo
                resolution.warning?.let { warnings += it }
 
                lproj.listFiles()
-                  ?.filter { it.isFile && it.extension.equals("strings", ignoreCase = true) }
+                  ?.filter { it.isFile }
                   ?.sortedBy { it.name }
                   .orEmpty()
-                  .map { file ->
+                  .mapNotNull { file ->
+                     val kind = AppleResourceKind.entries.firstOrNull { it.extension.equals(file.extension, ignoreCase = true) }
+                        ?: return@mapNotNull null
                      AppleResourceVariantFile(
                         locale = resolution.locale,
                         isBase = resolution.isBase,
                         file = file,
                         resourceDirectory = directory,
                         relativeBaseFile = file.name,
+                        kind = kind,
                      )
                   }
             }

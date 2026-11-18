@@ -120,7 +120,7 @@ class AndroidStringResourceParserTests
          ParsedAndroidResourceValue("cart_items", "{count, plural, other {# items}}", managedRemotely = true, pluralItems = items)
       }
       assertFailsWith<IllegalArgumentException> {
-         ParsedAndroidResourceValue("cart_items", composePluralValue(items.reversed()), managedRemotely = true, pluralItems = items.reversed())
+         ParsedAndroidResourceValue("cart_items", composePluralValue("count", items.reversed()), managedRemotely = true, pluralItems = items.reversed())
       }
    }
 

@@ -17,8 +17,8 @@ Current scope:
 - generates `Translations.*` and `TranslationsBundledSnapshot`
 - supports Android, JVM, and iOS consumers through the KMP client
 - skips `<string-array>`
-- optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`) as a
-  second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
+- optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`) and pushes
+  Apple `.stringsdict` plurals as a second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
   no generated `Translations.*` accessors and no runtime refresh (see [Apple `.strings` (iOS)](#apple-strings-ios))
 
 ## Install
@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.3.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/3.4.0/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **3.3.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **3.4.0** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.3.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:3.4.0")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:3.3.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:3.4.0")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.3.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.3.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "3.4.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "3.4.0" }
 ```
 
 ```kotlin
@@ -209,7 +209,7 @@ Config fields:
   `src/androidMain/res`.
 - `androidResources.keyOverrides` — rename an XML `name` to a different translation key, written as
   `xml-name: translation-key`. Applied consistently to generation and push/pull. Defaults to `{}`.
-- `appleResources.resourceDirectories` — optional; enables Apple `.strings` sync (see
+- `appleResources.resourceDirectories` — optional; enables Apple `.strings` and `.stringsdict` sync (see
   [Apple `.strings` (iOS)](#apple-strings-ios)).
 
 API key lookup order (Gradle plugin):
@@ -631,7 +631,7 @@ Available Gradle tasks:
 - `./gradlew.bat generateTranslationResources`
   Generates `Translations.*` and `TranslationsBundledSnapshot` from local XML.
 - `./gradlew.bat pushTranslations`
-  Uploads local XML — and, when `appleResources` is configured, Apple `.strings` — to TranslationTools.
+  Uploads local XML — and, when `appleResources` is configured, Apple `.strings` and `.stringsdict` — to TranslationTools.
   Sends only the local Keys and values, in one request; nothing is fetched from the server first.
   A Key deleted from `strings.xml` is not removed by a push. It disappears from TranslationTools once
   no running build of the app declares it for 7 days plus a 24-hour grace. While old and new app
@@ -639,7 +639,7 @@ Available Gradle tasks:
   module's Keys alone. A leftover `androidResources.prune` setting (or `-Ptranslationtools.prune`) is ignored.
   Strings and `<plurals>` marked `translatable="false"` are local-only — never pushed.
 - `./gradlew.bat pullTranslations`
-  Downloads translations from TranslationTools and updates local XML (and Apple `.strings`).
+  Downloads translations from TranslationTools and updates local XML (and Apple `.strings` and `.stringsdict`).
   When codegen is enabled (default), pull then regenerates Kotlin resources. With
   `generated.enabled: false`, pull only writes resources — it does not run generate.
   Existing entries are updated in place; new keys are added. Keys not managed remotely are written back
@@ -658,7 +658,7 @@ Normal workflow (codegen on — default):
 
 Sync-only workflow (`generated.enabled: false` on the same module):
 
-1. Edit Android XML (and optional Apple `.strings`).
+1. Edit Android XML (and optional Apple `.strings` and `.stringsdict`).
 2. Run `pushTranslations` / `pullTranslations` with configuration cache on as usual.
 3. Keep using your existing string reads until you adopt the runtime client and turn codegen back on.
 
@@ -705,7 +705,104 @@ runtime-updatable (routing native reads through the KMP client) is a separate, l
 See [`docs/adr/0001`](docs/adr/0001-ios-strings-sync-only.md) and
 [`docs/adr/0002`](docs/adr/0002-pull-creates-lproj-dirs-and-warns.md).
 
-`.xcstrings` (String Catalogs) are not supported.
+### `.stringsdict` plurals
+
+`pushTranslations` also reads every `.stringsdict` file in the same `.lproj/` folders (no extra
+setting) and sends each entry that can sync as a Plural, in the same push request as the `.strings`
+items.
+
+- **Origins.** Each `.stringsdict` file is its own origin named after the file:
+  `Localizable.stringsdict` is `:/Localizable.stringsdict`, separate from `:/Localizable.strings`,
+  so a Key in both files is two Translation refs. `Base.lproj` versus an explicit default-locale
+  directory is decided per file name, as for `.strings`.
+- **Which entries sync.** Only an entry whose format string is exactly one plural variable, such as
+  `%#@items@` (no text around it, no whitespace), and whose variable has the rule type
+  `NSStringPluralRuleType`. The Plural's argument is the variable name. This entry is sent as
+  `{items, plural, one {# item} other {# items}}`:
+
+  ```xml
+  <key>cart_items</key>
+  <dict>
+      <key>NSStringLocalizedFormatKey</key>
+      <string>%#@items@</string>
+      <key>items</key>
+      <dict>
+          <key>NSStringFormatSpecTypeKey</key>
+          <string>NSStringPluralRuleType</string>
+          <key>NSStringFormatValueTypeKey</key>
+          <string>d</string>
+          <key>one</key>
+          <string>%d item</string>
+          <key>other</key>
+          <string>%d items</string>
+      </dict>
+  </dict>
+  ```
+
+- **Forms.** The category keys `zero`, `one`, `two`, `few`, `many`, and `other` become the forms,
+  sent in that order whatever their order in the file. Apple's `zero` is sent as the ICU `zero`
+  category.
+- **The number becomes `#`.** Inside a form, `%` plus exactly the variable's value type, with or
+  without the position `1$`, is sent as `#` (`%d` or `%1$d` when the value type is `d`; `%lld` or
+  `%1$lld` when it is `lld`). Every other specifier is sent as written: `%@`, `%2$@`, `%%`, and an
+  integer specifier with a different value type such as `%d` in a `lld` entry. Form text is
+  otherwise sent as written, so a form with a `{`, `}`, or apostrophe that breaks the Plural grammar
+  becomes plain text in TranslationTools. No Android format specifier warning is raised for Apple
+  files.
+- **Missing entries.** A Locale whose `.stringsdict` file lacks the entry is sent with no value.
+- **Warnings.** Push skips what cannot sync, prints a warning, and sends the rest:
+  - `Skipped 'KEY' in 'PATH': only an entry whose format string is exactly one plural variable, such as '%#@items@', syncs as a Plural.`
+    (for example `You have %#@items@` or `%#@files@ in %#@folders@`; rewrite it as a whole sentence
+    per form)
+  - `Skipped 'KEY' in 'PATH': variable 'NAME' is not a plural rule.` (device-specific and
+    variable-width rules)
+  - `Skipped 'PATH': it is not a readable XML property list.` (a binary property list, or an XML
+    property list whose root is not a dictionary)
+
+The `.stringsdict` parser accepts the Apple `DOCTYPE` every property list carries but never loads
+the DTD or an external entity.
+
+`pullTranslations` writes the Plurals back into the same `.stringsdict` files. `.stringsdict` files
+stay sync-only like `.strings`: no `Translations.*` reference, no bundled snapshot, no runtime refresh.
+
+- **Merge into an existing file.** Pull parses the whole file and changes only what it owns. An
+  entry the file already has gets exactly the forms of the remote Plural (a local category the
+  remote lacks is removed, and a remote `=0` form is written as the `zero` key). The entry keeps
+  its variable name, value type, and position in the file, and a form already in the file keeps its
+  place. A Key the file lacks is appended after all existing entries, sorted by Key among the new
+  ones; existing entries are not re-sorted.
+- **`#` becomes the number's specifier.** Pull writes `#` as `%` plus the entry's value type
+  (`%d`, `%lld`). A form that also holds a positional specifier such as `%2$@` gets `%1$` plus the
+  value type instead (`%1$lld`); a form with only `%@` gets the plain `%lld`. A quoted `'#'` stays
+  a literal `#`.
+- **New Keys.** A new entry has the format string `%#@NAME@` (NAME is the Plural's argument), the
+  rule type `NSStringPluralRuleType`, and a value type taken from the same Key in the default
+  Locale's `.stringsdict` file (the `Base.lproj` file when that is the one in use). When that file
+  lacks the Key, including when it is the file being written, the value type is `lld`.
+- **Nothing is deleted.** A Key with no value in TranslationTools keeps its local entry, and so does
+  every entry push skips (text around the variable, several variables, device-specific and
+  variable-width rules), byte for byte.
+- **Kept-local warning.** When the value in TranslationTools is not a Plural that a `.stringsdict`
+  entry can hold (plain text, an empty string, or a Plural with an exact case such as `=5`), pull
+  keeps the local entry and prints
+  `Kept local 'KEY' in 'PATH': the value for 'LOCALE' in TranslationTools is not a Plural that a .stringsdict entry can hold.`
+  A Key with no local entry gets nothing added and the same warning.
+- **Unreadable file.** A file that is not an XML property list with a dictionary root (a binary
+  property list, for instance) is left unchanged, with
+  `Left 'PATH' unchanged: it is not a readable XML property list.` The other Locales' files are
+  still written.
+- **Xcode's format.** Pull writes the whole file as an XML property list in UTF-8 without a byte
+  order mark, tab-indented the way Xcode writes it: the `<?xml ...?>` line, the Apple `DOCTYPE`,
+  and a trailing newline. It compares the new bytes with the file's and writes only when they
+  differ, so a file Xcode wrote that receives no changes stays byte for byte the same.
+- **New Locales.** When TranslationTools has a value for a `.stringsdict` Origin in a Locale with no
+  local file, pull creates `<locale>.lproj/<file>.stringsdict` (the standard property-list header,
+  no managed-by comment) and prints the `knownRegions` warning, as for `.strings`. Pull never
+  creates a `.stringsdict` file for an Origin that has no local file with that name in any Locale
+  (an unreadable local file counts as a local file).
+
+`.xcstrings` (String Catalogs) are not supported. See
+[issue #10](https://github.com/mvdmio/translation-tools-client-kmp/issues/10).
 
 ## Migrate From Regular `strings.xml`
 

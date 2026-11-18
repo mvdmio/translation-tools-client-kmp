@@ -73,6 +73,63 @@ class PushTranslationsTaskTests
 
 
    @Test
+   fun push_should_send_stringsdict_plurals_next_to_strings_items_and_skip_what_cannot_sync()
+   {
+      val projectDir = createTempDirectory("translationtools-push-stringsdict").toFile()
+      File(projectDir, "res/values").mkdirs()
+      File(projectDir, "res/values/strings.xml").writeText(
+         "<resources><string name=\"home_title\">Home</string></resources>"
+      )
+      File(projectDir, "ios/en.lproj").mkdirs()
+      File(projectDir, "ios/pl.lproj").mkdirs()
+      File(projectDir, "ios/en.lproj/Localizable.strings").writeText("\"cart_items\" = \"Cart\";")
+      File(projectDir, "ios/en.lproj/Localizable.stringsdict").writeText(
+         stringsdictPlist(
+            pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items"),
+            pluralEntry("greeting", "items", "d", "other" to "%d items", format = "You have %#@items@"),
+         )
+      )
+      File(projectDir, "ios/pl.lproj/Localizable.stringsdict").writeText("bplist00 not xml")
+
+      var capturedBody = ""
+      val client = createHttpClient(
+         MockEngine { request ->
+            capturedBody = (request.body as TextContent).text
+            respond(
+               content = """{"receivedKeyCount":3,"createdKeyCount":3,"updatedKeyCount":0,"removedKeyCount":0}""",
+               status = HttpStatusCode.OK,
+               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+         }
+      )
+
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
+      task.apiKey.set("test-key")
+      task.defaultLocale.set("en")
+      task.resourceDirectories.from(File(projectDir, "res"))
+      task.appleResourceDirectories.from(File(projectDir, "ios"))
+      task.keyOverrides.set(emptyMap())
+      task.projectPathInput.set(project.path)
+      task.baseUrl.set(BASE_URL)
+      task.httpClientFactory = { client }
+
+      task.push()
+
+      val sent = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+         .map { it.jsonObject }
+         .map { Triple(it.getValue("origin").jsonPrimitive.content, it.getValue("key").jsonPrimitive.content, it.getValue("value").jsonPrimitive.content) }
+      assertEquals(
+         listOf(
+            Triple(":/Localizable.strings", "cart_items", "Cart"),
+            Triple(":/Localizable.stringsdict", "cart_items", "{items, plural, one {# item} other {# items}}"),
+            Triple(":/strings.xml", "home_title", "Home"),
+         ),
+         sent,
+      )
+   }
+
+   @Test
    fun push_should_send_only_the_sorted_local_items_in_one_request_without_fetching()
    {
       val projectDir = createTempDirectory("translationtools-push-local-only").toFile()

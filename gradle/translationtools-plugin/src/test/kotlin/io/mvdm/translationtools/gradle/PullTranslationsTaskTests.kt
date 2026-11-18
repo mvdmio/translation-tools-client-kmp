@@ -13,6 +13,8 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.TaskOutcome
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -211,6 +213,104 @@ class PullTranslationsTaskTests
       val deContent = deFile.readText()
       assertTrue(deContent.contains("Managed by TranslationTools"))
       assertTrue(deContent.contains("\"NSCameraUsageDescription\" = \"Kamera\";"))
+   }
+
+   @Test
+   fun pull_should_merge_remote_plurals_into_stringsdict_files_create_a_new_locales_file_and_still_write_strings_files()
+   {
+      val cartItems = "{\"origin\":\":/Localizable.stringsdict\",\"key\":\"cart_items\",\"value\":\"%s\"}"
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en","de"],"defaultLocale":"en"}""",
+         localeResponses = mapOf(
+            "en" to "[" + listOf(
+               """{"origin":":/Localizable.strings","key":"title","value":"New title"}""",
+               cartItems.format("{items, plural, one {# item} other {# things}}"),
+               """{"origin":":/Localizable.stringsdict","key":"inbox_messages","value":"{count, plural, one {# message} other {# messages}}"}""",
+               """{"origin":":/Localizable.stringsdict","key":"bag","value":"Items"}""",
+               """{"origin":":/Other.stringsdict","key":"x","value":"{count, plural, other {# x}}"}""",
+            ).joinToString(",") + "]",
+            "de" to "[" + cartItems.format("{items, plural, one {# Artikel} other {# Artikel}}") + "]",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-stringsdict").toFile()
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, appleResourceDirectories = listOf("ios"))
+         File(projectDir, "ios/en.lproj").mkdirs()
+         File(projectDir, "ios/en.lproj/Localizable.strings").writeText("\"title\" = \"Old title\";\n")
+         val stringsdict = File(projectDir, "ios/en.lproj/Localizable.stringsdict")
+         stringsdict.writeText(
+            stringsdictPlist(
+               pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items"),
+               pluralEntry("bag", "items", "d", "one" to "%d bag", "other" to "%d bags"),
+            ),
+         )
+
+         val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withPluginClasspath()
+            .withArguments("pullTranslations", "-Ptranslationtools.baseUrl=${server.baseUrl}")
+            .build()
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pullTranslations")?.outcome)
+         assertTrue(File(projectDir, "ios/en.lproj/Localizable.strings").readText().contains("\"title\" = \"New title\";"))
+
+         val enForms = parseAppleStringsdict(stringsdict.readBytes(), stringsdict.path) as ParsedAppleStringsdict.Readable
+         assertEquals(listOf("cart_items", "bag", "inbox_messages"), enForms.entries.map { it.key })
+         assertEquals(
+            listOf("{items, plural, one {# item} other {# things}}", "{items, plural, one {# bag} other {# bags}}", "{count, plural, one {# message} other {# messages}}"),
+            enForms.entries.map { it.toPluralValue() },
+         )
+         assertEquals(listOf("d", "d", "lld"), enForms.entries.map { it.valueType })
+         assertTrue(stringsdict.readText().contains("\t\t\t<string>%d things</string>\n"))
+         assertTrue(result.output.contains("Kept local 'bag' in '${stringsdict.path}': the value for 'en' in TranslationTools is not a Plural that a .stringsdict entry can hold."), result.output)
+
+         val deFile = File(projectDir, "ios/de.lproj/Localizable.stringsdict")
+         assertTrue(deFile.readText().startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC"))
+         assertEquals(
+            "{items, plural, one {# Artikel} other {# Artikel}}",
+            (parseAppleStringsdict(deFile.readBytes(), deFile.path) as ParsedAppleStringsdict.Readable).entries.single().toPluralValue(),
+         )
+         assertTrue(result.output.contains("Created '${deFile.path}' for locale 'de'. Add 'de' (or its region) to your Xcode project's knownRegions to bundle it."), result.output)
+
+         assertFalse(File(projectDir, "ios/en.lproj/Other.stringsdict").exists())
+         assertFalse(File(projectDir, "ios/de.lproj/Other.stringsdict").exists())
+         assertFalse(File(projectDir, "ios/de.lproj/Localizable.strings").exists())
+      }
+   }
+
+   @Test
+   fun pull_should_leave_an_unreadable_stringsdict_file_unchanged_and_still_write_the_other_locales()
+   {
+      MockTranslationToolsServer(
+         projectResponse = """{"locales":["en","pl"],"defaultLocale":"en"}""",
+         localeResponses = mapOf(
+            "en" to """[{"origin":":/Localizable.stringsdict","key":"cart_items","value":"{items, plural, one {# item} other {# things}}"}]""",
+            "pl" to """[{"origin":":/Localizable.stringsdict","key":"cart_items","value":"{items, plural, other {# rzeczy}}"}]""",
+         ),
+      ).use { server ->
+         val projectDir = createTempDirectory("translationtools-pull-stringsdict-binary").toFile()
+         writeNonKmpBuildFiles(projectDir)
+         writeStandardTestFixtures(projectDir, appleResourceDirectories = listOf("ios"))
+         File(projectDir, "ios/en.lproj").mkdirs()
+         File(projectDir, "ios/pl.lproj").mkdirs()
+         val enFile = File(projectDir, "ios/en.lproj/Localizable.stringsdict")
+         enFile.writeText(stringsdictPlist(pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items")))
+         val binary = byteArrayOf('b'.code.toByte(), 'p'.code.toByte(), 'l'.code.toByte(), 'i'.code.toByte(), 's'.code.toByte(), 't'.code.toByte(), 0, 1, 0xFF.toByte())
+         val plFile = File(projectDir, "ios/pl.lproj/Localizable.stringsdict")
+         plFile.writeBytes(binary)
+
+         val result = GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withPluginClasspath()
+            .withArguments("pullTranslations", "-Ptranslationtools.baseUrl=${server.baseUrl}")
+            .build()
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pullTranslations")?.outcome)
+         assertTrue(plFile.readBytes().contentEquals(binary))
+         assertTrue(result.output.contains("Left '${plFile.path}' unchanged: it is not a readable XML property list."), result.output)
+         assertTrue(enFile.readText().contains("\t\t\t<string>%d things</string>\n"))
+         assertFalse(result.output.contains("Ignored pulled origin"), result.output)
+      }
    }
 
    @Test

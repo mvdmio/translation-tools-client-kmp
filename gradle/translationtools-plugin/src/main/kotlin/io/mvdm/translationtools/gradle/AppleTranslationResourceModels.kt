@@ -14,12 +14,20 @@ internal data class AppleTranslationEntry(
    val valuesByLocale: Map<String, String?>,
 )
 
+/** The two Apple resource file types the plugin syncs; each is its own Origin per file name. */
+internal enum class AppleResourceKind(val extension: String)
+{
+   STRINGS("strings"),
+   STRINGSDICT("stringsdict"),
+}
+
 internal data class AppleResourceVariantFile(
    val locale: String,
    val isBase: Boolean,
    val file: File,
    val resourceDirectory: File,
    val relativeBaseFile: String,
+   val kind: AppleResourceKind,
 )
 
 internal data class AppleResourceDiscovery(

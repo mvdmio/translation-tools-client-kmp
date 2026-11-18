@@ -10,6 +10,9 @@ internal data class SkippedAndroidResource(
    val reason: String,
 )
 
+/** The Plural argument of a `<plurals>` resource, which names no variable. */
+private const val ANDROID_PLURAL_ARGUMENT = "count"
+
 /**
  * One `<string>` or `<plurals>` resource. [pluralItems] is null for a `<string>`; for a `<plurals>` it holds the items
  * in CLDR order, and [value] is the Plural they compose to, or null with no items.
@@ -24,7 +27,7 @@ internal data class ParsedAndroidResourceValue(
    init
    {
       if (pluralItems != null)
-         require(pluralItems == pluralItems.sortedBy { it.quantity } && value == if (pluralItems.isEmpty()) null else composePluralValue(pluralItems)) {
+         require(pluralItems == pluralItems.sortedBy { it.quantity } && value == if (pluralItems.isEmpty()) null else composePluralValue(ANDROID_PLURAL_ARGUMENT, pluralItems)) {
             "A <plurals> resource holds its items in CLDR order and its value is the Plural they compose to; build it with pluralsResource()."
          }
    }
@@ -35,7 +38,7 @@ internal fun pluralsResource(resourceName: String, items: List<AndroidPluralItem
    val sorted = items.sortedBy { it.quantity }
    return ParsedAndroidResourceValue(
       resourceName = resourceName,
-      value = if (sorted.isEmpty()) null else composePluralValue(sorted),
+      value = if (sorted.isEmpty()) null else composePluralValue(ANDROID_PLURAL_ARGUMENT, sorted),
       managedRemotely = managedRemotely,
       pluralItems = sorted,
    )
