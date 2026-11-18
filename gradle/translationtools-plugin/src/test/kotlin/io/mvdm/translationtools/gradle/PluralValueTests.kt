@@ -75,8 +75,23 @@ class PluralValueTests
       assertEquals("items", plural?.argument)
       assertEquals(
          listOf(
-            PluralCase(PluralSelector.Category(PluralQuantity.ONE), "# of '#' and {cartName}: #", listOf(0, 25), listOf("cartName")),
-            PluralCase(PluralSelector.Category(PluralQuantity.OTHER), "''# items", listOf(2), emptyList()),
+            PluralCase(PluralSelector.Category(PluralQuantity.ONE), "# of '#' and {cartName}: #", listOf(0, 25), listOf(5), listOf("cartName")),
+            PluralCase(PluralSelector.Category(PluralQuantity.OTHER), "''# items", listOf(2), emptyList(), emptyList()),
+         ),
+         plural?.cases,
+      )
+   }
+
+   @Test
+   fun parsePluralValue_should_report_a_quoted_hash_run_only_when_it_is_exactly_a_quoted_hash()
+   {
+      val plural = parsePluralValue("{n, plural, one {Item '''#'#} other {'{'#'}' '#'} few {'#''x'}}")
+
+      assertEquals(
+         listOf(
+            PluralCase(PluralSelector.Category(PluralQuantity.ONE), "Item '''#'#", listOf(10), listOf(7), emptyList()),
+            PluralCase(PluralSelector.Category(PluralQuantity.OTHER), "'{'#'}' '#'", listOf(3), listOf(8), emptyList()),
+            PluralCase(PluralSelector.Category(PluralQuantity.FEW), "'#''x'", emptyList(), emptyList(), emptyList()),
          ),
          plural?.cases,
       )

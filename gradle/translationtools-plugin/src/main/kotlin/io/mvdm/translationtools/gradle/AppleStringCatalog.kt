@@ -85,9 +85,9 @@ private fun pluralPushValue(argument: String, forms: List<AndroidPluralItem>, nu
    return CatalogPushValue.Value(composePluralValue(argument, forms.map { AndroidPluralItem(it.quantity, it.text.numberToHash(number)) }))
 }
 
-/** Replaces each specifier that stands for the number with `#`; every other specifier and `%%` stay as written. */
+/** Replaces each specifier that stands for the number with `#`; every other specifier and `%%` stay as written, and a literal `#` is quoted. */
 private fun String.numberToHash(number: NumberSpecifiers): String =
-   numberToken.replace(this) { match -> if (number.bodyOf(match) != null) "#" else match.value }
+   toPluralFormText(numberToken) { number.bodyOf(it) != null }
 
 /** One Key of a catalog; [localizations] is keyed by normalized Locale. */
 internal data class AppleCatalogKey(

@@ -91,7 +91,13 @@ private fun PlistNode?.stringValue(): String? = (this as? PlistString)?.text
  * specifier in each form becomes `#`.
  */
 internal fun ParsedStringsdictEntry.toPluralValue(): String =
-   composePluralValue(variable, forms.map { AndroidPluralItem(it.quantity, it.text.numberSpecifierToHash(valueType)) })
+   composePluralValue(
+      variable,
+      forms.map { form ->
+         // The number is `%` plus exactly the value type; an entry that names none has no number specifier.
+         AndroidPluralItem(form.quantity, form.text.toPluralFormText(appleSpecifier) { valueType != null && it.groups["spec"]?.value == valueType })
+      },
+   )
 
 /**
  * `%%`, or a whole specifier: `%`, an optional `position` such as `1$`, then the `spec` (flags, width, precision, length,
@@ -99,11 +105,25 @@ internal fun ParsedStringsdictEntry.toPluralValue(): String =
  */
 internal val appleSpecifier = Regex("%%|%(?<position>\\d+\\$)?(?<spec>[-+ 0#']*\\d*(?:\\.\\d+)?(?:hh|h|ll|l|q|L|z|t|j)?[a-zA-Z@])")
 
-/** Replaces the specifiers that are `%` plus exactly [valueType] with `#`; every other specifier stays as written. */
-private fun String.numberSpecifierToHash(valueType: String?): String
+/**
+ * This Apple form text as Plural form text, the one rule both Apple sources of Plurals push by: each token of [tokens] for
+ * which [isNumber] holds becomes `#`, and every other `#` (a literal one, or one inside another specifier such as `%#x`) is
+ * quoted as `'#'`. A single apostrophe directly before a literal `#` is doubled so the Plural reads it as an apostrophe.
+ */
+internal fun String.toPluralFormText(tokens: Regex, isNumber: (MatchResult) -> Boolean): String
 {
-   if (valueType == null)
-      return this
+   val text = StringBuilder()
+   var from = 0
+   tokens.findAll(this).forEach { token ->
+      text.append(substring(from, token.range.first).quoteLiteralHashes())
+      text.append(if (isNumber(token)) "#" else token.value.quoteLiteralHashes())
+      from = token.range.last + 1
+   }
 
-   return appleSpecifier.replace(this) { match -> if (match.groups["spec"]?.value == valueType) "#" else match.value }
+   return text.append(substring(from).quoteLiteralHashes()).toString()
 }
+
+private val hashWithOptionalApostrophe = Regex("'?#")
+
+private fun String.quoteLiteralHashes(): String =
+   replace(hashWithOptionalApostrophe) { match -> if (match.value.length == 2) "'''#'" else "'#'" }

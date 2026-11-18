@@ -96,7 +96,7 @@ private const val UNNAMED_VALUE_TYPE = "d"
 /** A remote Plural a `.stringsdict` entry can hold: its [argument] and the [forms] by category, in CLDR order. */
 internal data class HoldablePlural(val argument: String, val forms: List<HoldableForm>)
 
-internal data class HoldableForm(val quantity: PluralQuantity, val text: String, val numberHashes: List<Int>)
+internal data class HoldableForm(val quantity: PluralQuantity, val text: String, val numberHashes: List<Int>, val literalHashes: List<Int>)
 
 /** [value] as a Plural whose cases are categories or `=0` (written as `zero`), or null for anything else. */
 internal fun holdablePlural(value: String): HoldablePlural?
@@ -107,7 +107,7 @@ internal fun holdablePlural(value: String): HoldablePlural?
          is PluralSelector.Category -> selector.quantity
          is PluralSelector.Exact -> if (selector.digits == "0") PluralQuantity.ZERO else return null
       }
-      HoldableForm(quantity, case.text, case.numberHashes)
+      HoldableForm(quantity, case.text, case.numberHashes, case.literalHashes)
    }
 
    return HoldablePlural(plural.argument, forms.distinctBy { it.quantity }.sortedBy { it.quantity })
@@ -164,21 +164,38 @@ private fun pluralQuantityOf(key: String): PluralQuantity? = PluralQuantity.entr
 
 /**
  * The form text with each unquoted `#` written as `%` plus [valueType]; `%1$` plus [valueType] when the form also holds a
- * positional specifier such as `%2$@`.
+ * positional specifier such as `%2$@`. A quoted `'#'` is written as a bare `#`, and the doubled apostrophe push writes
+ * before one is written as a single apostrophe; any other quoted run stays as written.
  */
 internal fun HoldableForm.render(valueType: String): String
 {
-   if (numberHashes.isEmpty())
-      return text
-
    val positional = appleSpecifier.findAll(text).any { it.groups["position"] != null }
    val specifier = if (positional) "%1\$$valueType" else "%$valueType"
    val rendered = StringBuilder()
-   var from = 0
-   numberHashes.forEach { hash ->
-      rendered.append(text, from, hash).append(specifier)
-      from = hash + 1
+   var i = 0
+   while (i < text.length) {
+      when {
+         i in numberHashes -> {
+            rendered.append(specifier)
+            i += 1
+         }
+
+         i in literalHashes -> {
+            rendered.append('#')
+            i += "'#'".length
+         }
+
+         i + 2 in literalHashes && text.startsWith("''", i) -> {
+            rendered.append('\'')
+            i += 2
+         }
+
+         else -> {
+            rendered.append(text[i])
+            i += 1
+         }
+      }
    }
 
-   return rendered.append(text, from, text.length).toString()
+   return rendered.toString()
 }

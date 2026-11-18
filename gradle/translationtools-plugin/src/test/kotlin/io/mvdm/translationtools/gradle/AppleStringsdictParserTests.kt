@@ -62,6 +62,10 @@ class AppleStringsdictParserTests
          Triple("d", "%lld items", "%lld items"),
          Triple("d", "%5d items", "%5d items"),
          Triple("d", "plain text", "plain text"),
+         Triple("d", "Order #%d", "Order '#'#"),
+         Triple("d", "Hex %#x and %d", "Hex %'#'x and #"),
+         Triple("d", "Item '#%d", "Item '''#'#"),
+         Triple("d", "# and # of %d", "'#' and '#' of #"),
       )
 
       cases.forEach { (valueType, form, expected) ->
@@ -77,6 +81,22 @@ class AppleStringsdictParserTests
       val read = readStringsdict(stringsdictPlist(pluralEntry("k", "n", null, "other" to "%d items")))
 
       assertEquals("{n, plural, other {%d items}}", read.entries.single().toPluralValue())
+   }
+
+   @Test
+   fun toPluralValue_should_quote_a_literal_hash_so_a_plural_reads_it_as_text_and_only_the_number_as_the_number()
+   {
+      val read = readStringsdict(stringsdictPlist(pluralEntry("order", "count", "d", "other" to "Order #%d")))
+
+      assertEquals("{count, plural, other {Order '#'#}}", read.entries.single().toPluralValue())
+   }
+
+   @Test
+   fun toPluralValue_should_quote_a_literal_hash_when_the_entry_has_no_value_type()
+   {
+      val read = readStringsdict(stringsdictPlist(pluralEntry("k", "n", null, "other" to "Order #")))
+
+      assertEquals("{n, plural, other {Order '#'}}", read.entries.single().toPluralValue())
    }
 
    @Test

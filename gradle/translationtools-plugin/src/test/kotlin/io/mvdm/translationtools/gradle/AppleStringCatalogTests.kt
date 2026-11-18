@@ -211,6 +211,31 @@ class AppleStringCatalogTests
    }
 
    @Test
+   fun parse_should_quote_a_literal_hash_in_both_plural_shapes_and_only_the_number_becomes_a_hash()
+   {
+      val root = createTempDirectory("translationtools-catalog-plural-literal-hash").toFile()
+      writeCatalog(
+         root,
+         "Localizable.xcstrings",
+         catalog(
+            "en",
+            key("order", "en" to pluralVariation("other" to "Order #%lld, hex %#x")),
+            key("days", "en" to substitutionLocalization("days", "d", "other" to "Day #%d of %arg")),
+         ),
+      )
+
+      val project = AppleStringResourceParser().parse(listOf(root), defaultLocale = "en", projectPath = ":")
+
+      assertEquals(
+         mapOf(
+            "order" to mapOf("en" to "{count, plural, other {Order '#'#, hex %'#'x}}"),
+            "days" to mapOf("en" to "{days, plural, other {Day '#'# of #}}"),
+         ),
+         valuesByRef(project).entries.associate { (ref, values) -> ref.second to values },
+      )
+   }
+
+   @Test
    fun parse_should_send_other_specifiers_in_the_whole_value_shape_as_written()
    {
       val root = createTempDirectory("translationtools-catalog-plural-other-specifiers").toFile()

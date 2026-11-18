@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.1/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **4.0.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.0.1** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.1")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.1")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.1" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.1" }
 ```
 
 ```kotlin
@@ -792,8 +792,12 @@ items.
 - **The number becomes `#`.** Inside a form, `%` plus exactly the variable's value type, with or
   without the position `1$`, is sent as `#` (`%d` or `%1$d` when the value type is `d`; `%lld` or
   `%1$lld` when it is `lld`). Every other specifier is sent as written: `%@`, `%2$@`, `%%`, and an
-  integer specifier with a different value type such as `%d` in a `lld` entry. Form text is
-  otherwise sent as written, so a form with a `{`, `}`, or apostrophe that breaks the Plural grammar
+  integer specifier with a different value type such as `%d` in a `lld` entry. A literal `#` in a
+  form round-trips: it is sent quoted as `'#'` (`Order #%d` becomes `Order '#'#`, and `%#x` becomes
+  `%'#'x`), and pull writes it back without the quote marks. A single apostrophe directly before a
+  literal `#` is doubled on the way out and restored on the way back (`Item '#%d` is sent as
+  `Item '''#'#`). The same holds for a literal `#` in an Apple String Catalog plural form. Form text
+  is otherwise sent as written, so a form with a `{`, `}`, or apostrophe that breaks the Plural grammar
   becomes plain text in TranslationTools. No Android format specifier warning is raised for Apple
   files.
 - **Missing entries.** A Locale whose `.stringsdict` file lacks the entry is sent with no value.

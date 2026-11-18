@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-18: A literal # in an Apple plural form round-trips
+
+Version 4.0.1 fixes a literal `#` in an Apple `.stringsdict` plural form, and in a String Catalog plural form. A Plural reads every unquoted `#` as the number, so `Order #%d` reached TranslationTools as `Order ##` and showed the number twice. Push now sends every `#` that is not the number's own specifier as the quoted literal `'#'`: `Order #%d` becomes `Order '#'#`, and `Hex %#x and %d` becomes `Hex %'#'x and #`. A single apostrophe directly before a literal `#` is doubled, so `Item '#%d` becomes `Item '''#'#`.
+
+`pullTranslations` writes a quoted `'#'` back as a bare `#`, whatever the entry's value type, and restores the single apostrophe, so a pull right after a push leaves the file byte for byte the same. Any other quoted run in a remote form, such as `'{x}'`, is written as it is. Android `<plurals>` are unchanged. No API change.
+
 ## 2026-11-18: Typed Placeholder functions (breaking)
 
 Version 4.0.0 turns every `Translations.*` Key that needs Placeholders into a generated function, so the build fails when a call leaves out, misspells, or nulls a Placeholder. **This is a breaking change.** After you regenerate, `Translations.greeting` is no longer a property for each Key whose default-locale value holds a Placeholder that is not a Global placeholder, and for each Plural. Code that reads the property stops compiling until it passes the values:

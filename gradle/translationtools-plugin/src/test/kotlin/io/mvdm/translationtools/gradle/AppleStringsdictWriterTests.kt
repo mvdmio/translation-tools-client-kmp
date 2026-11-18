@@ -85,7 +85,7 @@ class AppleStringsdictWriterTests
    }
 
    @Test
-   fun write_should_write_the_number_as_the_entrys_value_type_and_leave_a_quoted_hash_literal()
+   fun write_should_write_the_number_as_the_entrys_value_type_and_a_quoted_hash_without_its_quote_marks()
    {
       val target = fileWith(
          stringsdictXcode(
@@ -112,8 +112,82 @@ class AppleStringsdictWriterTests
       assertEquals("%1\$lld of %2\$@", formsOf(target, "b", "n").getValue("one"))
       assertEquals("%2\$@ has %1\$lld items, %1\$lld in all", formsOf(target, "b", "n").getValue("other"))
       assertEquals("%lld item for %@", formsOf(target, "c", "n").getValue("one"))
-      assertEquals("'#' item", formsOf(target, "d", "n").getValue("one"))
-      assertEquals("'#' is %lld items", formsOf(target, "d", "n").getValue("other"))
+      assertEquals("# item", formsOf(target, "d", "n").getValue("one"))
+      assertEquals("# is %lld items", formsOf(target, "d", "n").getValue("other"))
+   }
+
+   @Test
+   fun write_should_write_a_quoted_hash_without_quote_marks_whether_or_not_the_form_holds_the_number()
+   {
+      val target = fileWith(
+         stringsdictXcode(
+            plurals("order", "count", "d", "one" to "x", "other" to "x"),
+            plurals("late", "count", "d", "one" to "x", "other" to "x"),
+            plurals("item", "count", "d", "one" to "x", "other" to "x"),
+         ),
+      )
+
+      writeAppleStringsdictFile(
+         target,
+         "en",
+         mapOf(
+            "order" to "{count, plural, one {Order '#'#} other {Order '#'}}",
+            "late" to "{count, plural, one {Order '#'# (late)} other {Order '#'#s}}",
+            "item" to "{count, plural, one {Item '''#'#} other {Item '''#'}}",
+         ),
+         emptyMap(),
+      )
+
+      assertEquals("Order #%d", formsOf(target, "order", "count").getValue("one"))
+      assertEquals("Order #", formsOf(target, "order", "count").getValue("other"))
+      assertEquals("Order #%d (late)", formsOf(target, "late", "count").getValue("one"))
+      assertEquals("Order #%ds", formsOf(target, "late", "count").getValue("other"))
+      assertEquals("Item '#%d", formsOf(target, "item", "count").getValue("one"))
+      assertEquals("Item '#", formsOf(target, "item", "count").getValue("other"))
+   }
+
+   @Test
+   fun write_should_write_any_other_quoted_run_as_it_is()
+   {
+      val target = fileWith(stringsdictXcode(plurals("k", "n", "d", "one" to "x", "other" to "x")))
+
+      writeAppleStringsdictFile(
+         target,
+         "en",
+         mapOf("k" to "{n, plural, one {'{x}' # it''s} other {'{'#'}' and '#'}}"),
+         emptyMap(),
+      )
+
+      assertEquals("'{x}' %d it''s", formsOf(target, "k", "n").getValue("one"))
+      assertEquals("'{'%d'}' and #", formsOf(target, "k", "n").getValue("other"))
+   }
+
+   @Test
+   fun write_should_leave_the_file_unchanged_when_pull_returns_what_push_sent_for_a_literal_hash()
+   {
+      val forms = listOf("Order #%d", "Hex %#x and %d", "Item '#%d", "# and # of %d")
+      val content = stringsdictXcode(*forms.mapIndexed { index, form -> plurals("k$index", "count", "d", "other" to form) }.toTypedArray())
+      val target = fileWith(content)
+      val pushed = (parseAppleStringsdict(target.readBytes(), target.path) as ParsedAppleStringsdict.Readable).entries.associate { it.key to it.toPluralValue() }
+      target.setLastModified(1_000_000_000_000L)
+
+      writeAppleStringsdictFile(target, "en", pushed, emptyMap())
+
+      assertEquals(content, target.readText())
+      assertEquals(1_000_000_000_000L, target.lastModified())
+   }
+
+   @Test
+   fun write_should_leave_the_file_unchanged_when_pull_returns_what_push_sent_for_an_entry_without_a_value_type()
+   {
+      val content = stringsdictXcode(plurals("none", "count", null, "one" to "Order #", "other" to "Order #"))
+      val target = fileWith(content)
+      val pushed = (parseAppleStringsdict(target.readBytes(), target.path) as ParsedAppleStringsdict.Readable).entries.associate { it.key to it.toPluralValue() }
+
+      writeAppleStringsdictFile(target, "en", pushed, emptyMap())
+
+      assertEquals("{count, plural, one {Order '#'} other {Order '#'}}", pushed.getValue("none"))
+      assertEquals(content, target.readText())
    }
 
    @Test

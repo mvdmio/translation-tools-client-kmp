@@ -306,6 +306,22 @@ class AppleStringCatalogPluralPullTests
    }
 
    @Test
+   fun write_should_write_a_quoted_hash_without_quote_marks_and_leave_a_plural_equal_to_what_push_sent_unchanged()
+   {
+      val original = catalogOf("k", "en" to wholePlural("translated" to ("one" to "Order #%lld"), "translated" to ("other" to "Order #%lld items")))
+      val file = tempCatalog(original)
+
+      writeAppleCatalogFile(file, listOf(item("k", "en" to "{count, plural, one {Order '#'#} other {Order '#'# items}}")))
+      assertEquals(original, file.readText())
+
+      writeAppleCatalogFile(file, listOf(item("k", "en" to "{count, plural, one {Order '#'#} other {Order '#'# (late)}}")))
+      assertEquals(
+         catalogOf("k", "en" to wholePlural("translated" to ("one" to "Order #%lld"), "translated" to ("other" to "Order #%lld (late)"))),
+         file.readText(),
+      )
+   }
+
+   @Test
    fun write_should_leave_the_fixture_unchanged_when_pull_returns_exactly_what_push_sent()
    {
       val file = tempCatalog(xcodeLayoutFixture())

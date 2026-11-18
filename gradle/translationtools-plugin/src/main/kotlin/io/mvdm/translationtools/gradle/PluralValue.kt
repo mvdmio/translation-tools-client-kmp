@@ -25,10 +25,17 @@ internal sealed interface PluralSelector
 
 /**
  * One case of a Plural value; [text] is the raw text between the form's braces and [numberHashes] the indexes in [text] of
- * each unquoted `#`, the places where the number stands (a quoted `'#'` is a literal and not listed). [placeholders] are the
- * distinct Placeholder names of the form in first-seen order; `{argument}` is the number and is not one.
+ * each unquoted `#`, the places where the number stands. [literalHashes] are the indexes of the opening apostrophe of each
+ * quoted run that is exactly `'#'`, a literal `#`. [placeholders] are the distinct Placeholder names of the form in
+ * first-seen order; `{argument}` is the number and is not one.
  */
-internal data class PluralCase(val selector: PluralSelector, val text: String, val numberHashes: List<Int>, val placeholders: List<String>)
+internal data class PluralCase(
+   val selector: PluralSelector,
+   val text: String,
+   val numberHashes: List<Int>,
+   val literalHashes: List<Int>,
+   val placeholders: List<String>,
+)
 
 /** A whole-value Plural: the [argument] name and its [cases] in written order. */
 internal data class ParsedPlural(val argument: String, val cases: List<PluralCase>)
@@ -68,6 +75,7 @@ private class PluralValueReader(private val input: String)
 {
    private var i = 0
    private val numberHashes = mutableListOf<Int>()
+   private val literalHashes = mutableListOf<Int>()
    private val placeholders = mutableListOf<String>()
    private var argument = ""
 
@@ -100,11 +108,12 @@ private class PluralValueReader(private val input: String)
 
          val start = i
          numberHashes.clear()
+         literalHashes.clear()
          placeholders.clear()
          if (!skipForm(start))
             return null
 
-         cases += PluralCase(selector, input.substring(start, i - 1), numberHashes.toList(), placeholders.toList())
+         cases += PluralCase(selector, input.substring(start, i - 1), numberHashes.toList(), literalHashes.toList(), placeholders.toList())
       }
 
       return cases.takeIf { it.isNotEmpty() && i == input.length }?.let { ParsedPlural(argument, it) }
@@ -155,7 +164,7 @@ private class PluralValueReader(private val input: String)
       return PluralQuantity.entries.firstOrNull { it.keyword == keyword }?.let(PluralSelector::Category)
    }
 
-   /** Moves past the form body that starts at [start] and its closing `}`, noting each unquoted `#`, or returns false when the body is not valid. */
+   /** Moves past the form body that starts at [start] and its closing `}`, noting each unquoted `#` and each `'#'` run, or returns false when the body is not valid. */
    private fun skipForm(start: Int): Boolean
    {
       while (i < input.length) {
@@ -170,7 +179,12 @@ private class PluralValueReader(private val input: String)
 
             c == '\'' && next == '\'' -> i += 2
 
-            c == '\'' && (next == '{' || next == '}' || next == '#') -> skipQuotedRun()
+            c == '\'' && (next == '{' || next == '}' || next == '#') -> {
+               if (input.startsWith("'#'", i) && input.getOrNull(i + 3) != '\'')
+                  literalHashes += i - start
+
+               skipQuotedRun()
+            }
 
             c == '{' -> if (!skipPlaceholderOrBraceLiteral()) return false
 

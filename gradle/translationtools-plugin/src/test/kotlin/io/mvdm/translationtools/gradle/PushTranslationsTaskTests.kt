@@ -131,6 +131,47 @@ class PushTranslationsTaskTests
    }
 
    @Test
+   fun push_should_send_a_literal_hash_in_a_stringsdict_form_quoted_and_only_the_number_as_the_number()
+   {
+      val projectDir = createTempDirectory("translationtools-push-stringsdict-hash").toFile()
+      File(projectDir, "res/values").mkdirs()
+      File(projectDir, "res/values/strings.xml").writeText("<resources></resources>")
+      File(projectDir, "ios/en.lproj").mkdirs()
+      File(projectDir, "ios/en.lproj/Localizable.stringsdict").writeText(
+         stringsdictPlist(pluralEntry("order", "count", "d", "other" to "Order #%d"))
+      )
+
+      var capturedBody = ""
+      val client = createHttpClient(
+         MockEngine { request ->
+            capturedBody = (request.body as TextContent).text
+            respond(
+               content = """{"receivedKeyCount":1,"createdKeyCount":1,"updatedKeyCount":0,"removedKeyCount":0}""",
+               status = HttpStatusCode.OK,
+               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+         }
+      )
+
+      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+      val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
+      task.apiKey.set("test-key")
+      task.defaultLocale.set("en")
+      task.resourceDirectories.from(File(projectDir, "res"))
+      task.appleResourceDirectories.from(File(projectDir, "ios"))
+      task.keyOverrides.set(emptyMap())
+      task.projectPathInput.set(project.path)
+      task.baseUrl.set(BASE_URL)
+      task.httpClientFactory = { client }
+
+      task.push()
+
+      val sent = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+         .map { it.jsonObject.getValue("value").jsonPrimitive.content }
+      assertEquals(listOf("{count, plural, other {Order '#'#}}"), sent)
+   }
+
+   @Test
    fun push_should_send_string_catalog_values_as_their_own_origin_next_to_strings_and_android_items()
    {
       val projectDir = createTempDirectory("translationtools-push-xcstrings").toFile()
