@@ -13,8 +13,8 @@ _Avoid_: backend, server, API.
 
 **Source of truth**:
 The local resource files a developer edits by hand. These define which keys and locales
-exist; TranslationTools mirrors them. Today this is Android `strings.xml`; Apple
-`.strings` files are being added as a second source.
+exist, and TranslationTools mirrors them. These are Android `strings.xml`, Apple `.strings`
+and `.stringsdict` files, and Apple String Catalogs.
 
 **Translation ref**:
 The identity of a single translatable entry, as an `(origin, key)` pair. Combined with a
@@ -60,7 +60,10 @@ sentence per Plural form: `{count, plural, one {# item} other {# items}}`. The a
 whole number, and that number picks the form. A Key is a Plural when its default-locale value
 is one. Each Android `<plurals>` resource syncs as a Plural whose argument is `count`. Each
 Apple `.stringsdict` entry whose format string is exactly one plural variable syncs as a
-Plural whose argument is that variable's name.
+Plural whose argument is that variable's name. In an Apple String Catalog, a localization that varies by
+plural as a whole syncs as a Plural whose argument is `count`, and a localization whose value is
+exactly one substitution that varies by plural syncs as a Plural whose argument is that
+substitution's name.
 _Avoid_: plural string, ICU message, quantity string.
 
 **Plural form**:
@@ -68,7 +71,8 @@ One case of a Plural: a CLDR plural category (`zero`, `one`, `two`, `few`, `many
 an exact number such as `=0`, together with the sentence shown for it. A `#` in the sentence
 prints the number. In a `<plurals>` resource, each `<item quantity="...">` is the form of that
 category. In an Apple `.stringsdict` entry, each category key under the plural variable is the
-form of that category.
+form of that category. In an Apple String Catalog, each category under the plural variation is
+the form of that category.
 _Avoid_: branch, variant, quantity.
 
 **Android format specifier**:
@@ -96,6 +100,14 @@ An Apple localization file in property-list format, living in a `<locale>.lproj/
 next to the `.strings` files, that holds an app's plural text. Each entry names a variable and
 gives one sentence per CLDR plural category. It syncs as a source of truth for Plurals.
 _Avoid_: plist, plural dictionary.
+
+**Apple String Catalog**:
+An Apple localization file in JSON format, named `<table>.xcstrings` and living next to the
+`.lproj` directories rather than inside one, that holds one table's Keys in every Locale. A Key's
+value in a Locale is either plain text or text that varies by plural or by device. A Key may be
+marked "don't translate", and a value carries a review state that stays in the file. The whole
+file is one Origin.
+_Avoid_: xcstrings file, catalog, string table.
 
 **`.lproj` directory**:
 Apple's per-locale resource directory (`en.lproj`, `de.lproj`, `Base.lproj`). The iOS
