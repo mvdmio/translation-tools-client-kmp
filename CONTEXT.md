@@ -58,14 +58,17 @@ _Avoid_: ambient placeholder, context variable.
 A translation value that is one ICU plural argument wrapping the whole value, with a whole
 sentence per Plural form: `{count, plural, one {# item} other {# items}}`. The app passes a
 whole number, and that number picks the form. A Key is a Plural when its default-locale value
-is one. Each Android `<plurals>` resource syncs as a Plural whose argument is `count`.
+is one. Each Android `<plurals>` resource syncs as a Plural whose argument is `count`. Each
+Apple `.stringsdict` entry whose format string is exactly one plural variable syncs as a
+Plural whose argument is that variable's name.
 _Avoid_: plural string, ICU message, quantity string.
 
 **Plural form**:
 One case of a Plural: a CLDR plural category (`zero`, `one`, `two`, `few`, `many`, `other`) or
 an exact number such as `=0`, together with the sentence shown for it. A `#` in the sentence
 prints the number. In a `<plurals>` resource, each `<item quantity="...">` is the form of that
-category.
+category. In an Apple `.stringsdict` entry, each category key under the plural variable is the
+form of that category.
 _Avoid_: branch, variant, quantity.
 
 **Android format specifier**:
@@ -87,6 +90,12 @@ name, permission usage descriptions). Read by the **OS**, not app code.
 **`Localizable.strings`**:
 An Apple `.strings` file holding an app's own UI strings, read by iOS code via
 `NSLocalizedString`. Same format as `InfoPlist.strings`; differs only in who consumes it.
+
+**Apple `.stringsdict` file**:
+An Apple localization file in property-list format, living in a `<locale>.lproj/` directory
+next to the `.strings` files, that holds an app's plural text. Each entry names a variable and
+gives one sentence per CLDR plural category. It syncs as a source of truth for Plurals.
+_Avoid_: plist, plural dictionary.
 
 **`.lproj` directory**:
 Apple's per-locale resource directory (`en.lproj`, `de.lproj`, `Base.lproj`). The iOS
