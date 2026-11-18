@@ -59,11 +59,11 @@ jobs:
             :translationtools-client-compose:compileKotlinIosSimulatorArm64
             -Pkotlin.native.ignoreDisabledTargets=false
 
-      -  name: Verify iOS Maven variants locally
+      -  name: Verify Maven variants locally
          env:
             ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
             ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-         run: ./gradlew verifyIosMavenVariants -Pkotlin.native.ignoreDisabledTargets=false
+         run: ./gradlew verifyMavenVariants -Pkotlin.native.ignoreDisabledTargets=false
 
       -  name: Publish package to Maven Central
          env:

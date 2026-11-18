@@ -10,7 +10,7 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "4.0.1"
+version = "4.0.2"
 
 apply(from = "gradle/cldr/cldr-plural-rules.gradle.kts")
 
@@ -99,6 +99,7 @@ mavenPublishing {
    configure(
       KotlinMultiplatform(
          javadocJar = JavadocJar.Empty(),
+         androidVariantsToPublish = listOf("release"),
       )
    )
 
@@ -145,7 +146,11 @@ mavenPublishing {
    }
 }
 
-val iosMavenCheckRepo = layout.buildDirectory.dir("ios-maven-check")
+val mavenVariantCheckRepo = layout.buildDirectory.dir("maven-variant-check")
+val androidMavenCheckRequiredArtifactIds = listOf(
+   "translationtools-client-kmp-android",
+   "translationtools-client-compose-android",
+)
 val iosMavenCheckRequiredArtifactIds = listOf(
    "translationtools-client-kmp-iosarm64",
    "translationtools-client-kmp-iosx64",
@@ -159,45 +164,51 @@ allprojects {
       extensions.configure<org.gradle.api.publish.PublishingExtension> {
          repositories {
             maven {
-               name = "IosMavenCheck"
-               url = uri(iosMavenCheckRepo)
+               name = "MavenVariantCheck"
+               url = uri(mavenVariantCheckRepo)
             }
          }
       }
    }
 }
 
-tasks.register("verifyIosMavenVariants") {
+tasks.register("verifyMavenVariants") {
    group = "verification"
    description =
-      "Publishes client + Compose to build/ios-maven-check and asserts iOS variant modules exist on disk."
+      "Publishes client + Compose to build/maven-variant-check and asserts Android and iOS variant modules exist on disk."
    dependsOn(
-      "publishAllPublicationsToIosMavenCheckRepository",
-      ":translationtools-client-compose:publishAllPublicationsToIosMavenCheckRepository",
+      "publishAllPublicationsToMavenVariantCheckRepository",
+      ":translationtools-client-compose:publishAllPublicationsToMavenVariantCheckRepository",
    )
 
-   val repoDir = iosMavenCheckRepo
-   val required = iosMavenCheckRequiredArtifactIds
+   val repoDir = mavenVariantCheckRepo
+   val androidRequired = androidMavenCheckRequiredArtifactIds
+   val iosRequired = iosMavenCheckRequiredArtifactIds
    val projectVersion = provider { version.toString() }
 
    doLast {
       val root = repoDir.get().asFile
       val resolvedVersion = projectVersion.get()
-      val missing = required.filter { artifactId ->
-         !root.resolve("io/mvdm/translationtools/$artifactId/$resolvedVersion/$artifactId-$resolvedVersion.klib").isFile
+      fun missingArtifacts(artifactIds: List<String>, extension: String) = artifactIds.filter { artifactId ->
+         !root.resolve("io/mvdm/translationtools/$artifactId/$resolvedVersion/$artifactId-$resolvedVersion.$extension").isFile
       }
-      if (missing.isNotEmpty())
+      val missingAndroid = missingArtifacts(androidRequired, "aar")
+      val missingIos = missingArtifacts(iosRequired, "klib")
+      if (missingAndroid.isNotEmpty() || missingIos.isNotEmpty())
       {
-         throw GradleException(
-            "Missing iOS Maven variant modules under ${root.absolutePath}: ${missing.joinToString()}. " +
-               "Compile iOS klibs with -Pkotlin.native.ignoreDisabledTargets=false before publish " +
+         val iosHint =
+            if (missingIos.isEmpty()) ""
+            else " Compile iOS klibs with -Pkotlin.native.ignoreDisabledTargets=false before publish " +
                "(kotlin.native.ignoreDisabledTargets must not hide a missing iOS output on the publish job). " +
-               "If Linux cannot produce these klibs because of C interop, switch only the publish job to a macOS runner.",
+               "If Linux cannot produce these klibs because of C interop, switch only the publish job to a macOS runner."
+         throw GradleException(
+            "Missing Maven variant modules under ${root.absolutePath}: " +
+               (missingAndroid + missingIos).joinToString() + "." + iosHint,
          )
       }
    }
 }
 
 tasks.named("publishAndReleaseToMavenCentral").configure {
-   dependsOn("verifyIosMavenVariants")
+   dependsOn("verifyMavenVariants")
 }

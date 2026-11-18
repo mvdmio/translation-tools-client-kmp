@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.1/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.2/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **4.0.1** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.0.2** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.1")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.2")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.1")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.2")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.1" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.1" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.2" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.2" }
 ```
 
 ```kotlin
@@ -645,7 +645,7 @@ modules (`iosArm64`, `iosX64`, `iosSimulatorArm64`). Compose helpers
 `iosSimulatorArm64` (Compose Multiplatform 1.11+ dropped Apple x86_64 / `iosX64`).
 
 Publish stays on Ubuntu and uses Kotlin's default klib cross-compilation (on since
-2.2.20). CI compiles those iOS klibs and runs `verifyIosMavenVariants` before Maven
+2.2.20). CI compiles those iOS klibs and runs `verifyMavenVariants` (Android and iOS) before Maven
 Central; a missing variant fails the job. If Linux ever cannot produce a klib because of
 C interop, switch **only** the publish job to a macOS runner — do not leave metadata
 pointers without artifacts.

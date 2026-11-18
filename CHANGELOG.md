@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-18: Android builds publish again
+
+Version 4.0.2 publishes the Android build of both `translationtools-client-kmp` and `translationtools-client-compose` again, as `translationtools-client-kmp-android` and `translationtools-client-compose-android`. Gradle on an Android app resolves them from the root artifacts the same way it resolves the JVM and iOS builds. The versions from 1.0.1 to 4.0.1 on Maven Central have no Android build, and Central does not allow a published version to change, so Android apps need 4.0.2 or later.
+
+The publish no longer times out while it waits for Maven Central: it waits up to 60 minutes for the release to reach PUBLISHED, instead of giving up after 15. The pre-upload check is now `verifyMavenVariants` (it was `verifyIosMavenVariants`) and also requires the Android build of both modules. No API change.
+
 ## 2026-11-18: A literal # in an Apple plural form round-trips
 
 Version 4.0.1 fixes a literal `#` in an Apple `.stringsdict` plural form, and in a String Catalog plural form. A Plural reads every unquoted `#` as the number, so `Order #%d` reached TranslationTools as `Order ##` and showed the number twice. Push now sends every `#` that is not the number's own specifier as the quoted literal `'#'`: `Order #%d` becomes `Order '#'#`, and `Hex %#x and %d` becomes `Hex %'#'x and #`. A single apostrophe directly before a literal `#` is doubled, so `Item '#%d` becomes `Item '''#'#`.
