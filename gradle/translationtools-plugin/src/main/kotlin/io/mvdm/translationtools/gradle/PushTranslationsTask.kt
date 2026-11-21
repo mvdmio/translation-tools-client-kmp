@@ -46,7 +46,7 @@ abstract class PushTranslationsTask : DefaultTask()
    internal var appleParser: AppleStringResourceParser = AppleStringResourceParser()
 
    @get:Internal
-   internal var httpClientFactory: () -> HttpClient = { createDefaultPushHttpClient() }
+   internal var httpClientFactory: () -> HttpClient = { createDefaultHttpClient() }
 
    @TaskAction
    fun push()
@@ -86,11 +86,22 @@ abstract class PushTranslationsTask : DefaultTask()
             val items = (androidItems + appleItems)
                .sortedWith(compareBy<TranslationPushItemRequest> { it.origin }.thenBy { it.locale }.thenBy { it.key })
 
+            val defaultLocaleByOrigin = state.entries.associate { it.origin to state.defaultLocale } + appleProject?.defaultLocaleByOrigin.orEmpty()
+            val nonDefaultLocales = items
+               .filter { it.locale != defaultLocaleByOrigin.getValue(it.origin) }
+               .map { it.locale }
+               .distinct()
+            val remoteItemsByLocale = nonDefaultLocales.associateWith { locale ->
+               fetchLocaleTranslations(client, inputs.apiKey, locale, inputs.baseUrl, ::TranslationToolsPushException)
+            }
+            val guarded = keepRemoteNonDefaultValues(items, defaultLocaleByOrigin, remoteItemsByLocale)
+            guarded.warnings.forEach { warning -> logger.warn(warning) }
+
             val response = pushProjectTranslations(
                 client = client,
                 apiKey = inputs.apiKey,
                 request = TranslationPushRequest(
-                   items = items,
+                   items = guarded.items,
                 ),
                 baseUrl = inputs.baseUrl,
              )
@@ -116,3 +127,49 @@ private fun toPushItems(
    valuesByLocale.entries.map { (locale, value) ->
       TranslationPushItemRequest(origin = origin, locale = locale, key = key, value = value)
    }
+
+private data class TranslationSlot(val origin: String, val key: String, val locale: String)
+
+internal data class GuardedPushItems(
+   val items: List<TranslationPushItemRequest>,
+   val warnings: List<String>,
+)
+
+/**
+ * Applies the rule that TranslationTools owns a non-default value it holds (docs/adr/0007). A default-locale item (per
+ * [defaultLocaleByOrigin]) goes up unchanged. Every other item stays in the upload, but keeps its local value only where
+ * [remoteItemsByLocale] holds none for the same Origin, Key and Locale; otherwise its value is null, which TranslationTools reads
+ * as "keep the stored value", with a warning when a non-empty local value differs. Push never sends `""` outside the default
+ * Locale, and the read is only compared: a Key only TranslationTools has stays out.
+ */
+internal fun keepRemoteNonDefaultValues(
+   items: List<TranslationPushItemRequest>,
+   defaultLocaleByOrigin: Map<String, String>,
+   remoteItemsByLocale: Map<String, List<TranslationItemResponse>>,
+): GuardedPushItems
+{
+   val remoteValues = remoteItemsByLocale.flatMap { (locale, remoteItems) ->
+      remoteItems.map { TranslationSlot(it.origin, it.key, locale) to it.value.orEmpty() }
+   }.toMap()
+   val warnings = mutableListOf<String>()
+
+   val guarded = items.map { item ->
+      if (item.locale == defaultLocaleByOrigin.getValue(item.origin))
+         return@map item
+
+      val local = item.value.orEmpty()
+      val remote = remoteValues[TranslationSlot(item.origin, item.key, item.locale)].orEmpty()
+      when {
+         remote.isEmpty() -> item.copy(value = local.ifEmpty { null })
+         local.isEmpty() || local == remote -> item.copy(value = null)
+         else -> {
+            warnings += "Your local value of '${item.key}' in '${item.origin}' (locale ${item.locale}) differs from the one on TranslationTools, " +
+               "so push did not send it. Push never replaces a value outside the default Locale. " +
+               "To change the value, edit it on TranslationTools. To copy the TranslationTools value into your file, run pullTranslations."
+            item.copy(value = null)
+         }
+      }
+   }
+
+   return GuardedPushItems(guarded, warnings)
+}

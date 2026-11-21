@@ -1,20 +1,11 @@
 package io.mvdm.translationtools.gradle
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.ClientRequestException
-import io.ktor.client.plugins.ServerResponseException
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
-import io.ktor.http.isSuccess
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -59,7 +50,7 @@ abstract class PullTranslationsTask : DefaultTask()
 
    @get:Internal
    internal var httpClientFactory: () -> HttpClient = {
-      createDefaultPullHttpClient()
+      createDefaultHttpClient()
    }
 
    @TaskAction
@@ -227,7 +218,7 @@ internal suspend fun pullTranslations(
 
    val itemsByOriginKey = linkedMapOf<Pair<String, String>, MutableMap<String, String?>>()
    locales.forEach { locale ->
-      fetchLocaleTranslations(client, apiKey, locale, baseUrl).forEach { item ->
+      fetchLocaleTranslations(client, apiKey, locale, baseUrl, ::PullTranslationsException).forEach { item ->
          itemsByOriginKey.getOrPut(item.origin to item.key) { linkedMapOf() }[locale] = item.value
       }
    }
@@ -249,94 +240,21 @@ internal suspend fun fetchProjectMetadata(
    baseUrl: String = BASE_URL,
 ): ProjectMetadataResponse
 {
-   return executePullRequest("project metadata") {
+   return executeRemoteRequest("project metadata", ::PullTranslationsException) {
       val body = client.get("$baseUrl/api/v1/translations/project") {
          header(HttpHeaders.Authorization, apiKey)
       }.requireSuccessBodyText()
 
-      pullJson.decodeFromString(ProjectMetadataResponse.serializer(), body)
-   }
-}
-
-private suspend fun fetchLocaleTranslations(
-   client: HttpClient,
-   apiKey: String,
-   locale: String,
-   baseUrl: String,
-): List<TranslationItemResponse>
-{
-   return executePullRequest("locale '$locale'") {
-      val body = client.get("$baseUrl/api/v1/translations/$locale") {
-         header(HttpHeaders.Authorization, apiKey)
-      }.requireSuccessBodyText()
-
-      pullJson.decodeFromString(ListSerializer(TranslationItemResponse.serializer()), body)
-   }
-}
-
-private suspend fun <T> executePullRequest(label: String, action: suspend () -> T): T
-{
-   try {
-      return action()
-   }
-   catch (exception: PullTranslationsException) {
-      throw exception
-   }
-   catch (exception: SerializationException) {
-      throw PullTranslationsException("Failed to parse TranslationTools $label response.", exception)
-   }
-   catch (exception: ClientRequestException) {
-      throw PullTranslationsException(
-         "TranslationTools $label request failed with status ${exception.response.status.value}: ${exception.response.bodyAsText().trim()}",
-         exception,
-      )
-   }
-   catch (exception: ServerResponseException) {
-      throw PullTranslationsException(
-         "TranslationTools $label request failed with status ${exception.response.status.value}: ${exception.response.bodyAsText().trim()}",
-         exception,
-      )
-   }
-   catch (exception: Throwable) {
-      throw PullTranslationsException("TranslationTools $label request failed: ${exception.message ?: "unknown error"}", exception)
-   }
-}
-
-private suspend fun io.ktor.client.statement.HttpResponse.requireSuccessBodyText(): String
-{
-   if (!status.isSuccess()) {
-      val body = bodyAsText().trim()
-      throw PullTranslationsException("TranslationTools request failed with status ${status.value}: $body")
-   }
-
-   return bodyAsText()
-}
-
-internal fun createDefaultPullHttpClient(): HttpClient
-{
-   return HttpClient(io.ktor.client.engine.cio.CIO) {
-      install(ContentNegotiation) {
-         json(Json { ignoreUnknownKeys = true })
-      }
+      remoteJson.decodeFromString(ProjectMetadataResponse.serializer(), body)
    }
 }
 
 internal class PullTranslationsException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-internal const val BASE_URL = "https://translations.mvdm.io"
-private val pullJson = Json { ignoreUnknownKeys = true }
-
 @Serializable
 internal data class ProjectMetadataResponse(
    val locales: List<String>,
    val defaultLocale: String?,
-)
-
-@Serializable
-internal data class TranslationItemResponse(
-   val origin: String,
-   val key: String,
-   val value: String?,
 )
 
 internal data class PulledTranslations(

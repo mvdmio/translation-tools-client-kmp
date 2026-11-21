@@ -8,6 +8,8 @@ internal data class AppleTranslationProject(
    val warnings: List<String>,
    /** Why a file could not be read, to log next to the warnings; kept apart because a warning's text is fixed. */
    val details: List<String> = emptyList(),
+   /** The default Locale of each Origin: the `defaultLocale` setting for a `.strings` or `.stringsdict` file, a String Catalog's own source language. */
+   val defaultLocaleByOrigin: Map<String, String>,
 )
 
 internal data class AppleTranslationEntry(

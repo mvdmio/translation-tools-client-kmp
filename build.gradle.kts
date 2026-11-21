@@ -10,7 +10,7 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 
 group = "io.mvdm.translationtools"
-version = "4.1.1"
+version = "4.1.2"
 
 apply(from = "gradle/cldr/cldr-plural-rules.gradle.kts")
 

@@ -33,16 +33,18 @@ internal class AppleStringResourceParser
       if (discovery.files.isEmpty() && discovery.catalogs.isEmpty()) {
          warnings += "No .lproj directories with .strings or .stringsdict files, and no .xcstrings files, " +
             "were found under the configured appleResources.resourceDirectories."
-         return AppleTranslationProject(locales = emptyList(), entries = emptyList(), warnings = warnings)
+         return AppleTranslationProject(locales = emptyList(), entries = emptyList(), warnings = warnings, defaultLocaleByOrigin = emptyMap())
       }
 
       val collected = linkedMapOf<Pair<String, String>, MutableMap<String, String?>>()
+      val defaultLocaleByOrigin = linkedMapOf<String, String>()
       val readableLocales = mutableSetOf<String>()
       discovery.files.forEach { variant ->
          val values = readVariantValues(variant, warnings) ?: return@forEach
          readableLocales += variant.locale
 
          val origin = buildOrigin(projectPath, variant.relativeBaseFile)
+         defaultLocaleByOrigin[origin] = normalizeAppleLocale(defaultLocale)
          values.forEach { (key, value) ->
             collected.getOrPut(origin to key) { linkedMapOf() }[variant.locale] = value
          }
@@ -60,6 +62,7 @@ internal class AppleStringResourceParser
          readableLocales += catalog.locales
 
          val origin = buildOrigin(projectPath, file.name)
+         defaultLocaleByOrigin.getOrPut(origin) { catalog.sourceLanguage }
          catalog.keys.filter { it.shouldTranslate }.forEach { key ->
             val perLocale = collected.getOrPut(origin to key.key) { linkedMapOf() }
             catalog.locales.forEach { locale ->
@@ -89,7 +92,7 @@ internal class AppleStringResourceParser
             )
          }
 
-      return AppleTranslationProject(locales = locales, entries = entries, warnings = warnings, details = details)
+      return AppleTranslationProject(locales = locales, entries = entries, warnings = warnings, details = details, defaultLocaleByOrigin = defaultLocaleByOrigin)
    }
 
    /** The pushed value of each key in [variant], or null (after a warning) for a `.stringsdict` file that cannot be read. */

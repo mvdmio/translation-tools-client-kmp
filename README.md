@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.1.1/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.1.2/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **4.1.1** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.1.2** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.1.1")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.1.2")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:4.1.1")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.1.2")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.1.1" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.1.1" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.1.2" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.1.2" }
 ```
 
 ```kotlin
@@ -691,7 +691,16 @@ Available Gradle tasks:
   Generates `Translations.*` and `TranslationsBundledSnapshot` from local XML.
 - `./gradlew.bat pushTranslations`
   Uploads local XML — and, when `appleResources` is configured, Apple `.strings`, `.stringsdict` and `.xcstrings` — to TranslationTools.
-  Sends only the local Keys and values, in one request; nothing is fetched from the server first.
+  Push never replaces a value TranslationTools holds outside the default Locale. It sends every
+  default-locale value as it is, and a local value in any other Locale only where TranslationTools has no
+  value for that Key and Locale yet (a new Key uploads all its Locales). Where the local value differs from
+  the one TranslationTools holds, push warns (`Your local value of 'KEY' in 'ORIGIN' (locale LOCALE)
+  differs from the one on TranslationTools, so push did not send it. ...`) and leaves the TranslationTools
+  value alone. To change that value, edit it on TranslationTools; to copy it into your file, run
+  `pullTranslations`. The default Locale is the `defaultLocale` setting, and for a String Catalog its own
+  source language. Before the upload push reads each non-default Locale it sends, once per Locale, so it
+  makes one request when the files hold only the default Locale. If a read fails, push fails and uploads
+  nothing. Push still sends only the local Keys: a Key only TranslationTools has is not added to the upload.
   A Key deleted from `strings.xml` is not removed by a push. It disappears from TranslationTools once
   no running build of the app declares it for 7 days plus a 24-hour grace. While old and new app
   versions both run, TranslationTools keeps the Keys of both. One module's push leaves another
@@ -719,7 +728,8 @@ Normal workflow (codegen on — default):
 1. Edit `src/androidMain/res/values*/**/*.xml`.
 2. Build or run `generateTranslationResources`.
 3. Use `Translations.*` in shared or platform code.
-4. Run `pushTranslations` when local XML should be sent to TranslationTools.
+4. Run `pushTranslations` when local XML should be sent to TranslationTools. Push sends default-locale
+   values and fills non-default values TranslationTools holds empty; it never replaces a value TranslationTools holds there.
 5. Run `pullTranslations` when remote changes should be merged back into XML.
 
 Sync-only workflow (`generated.enabled: false` on the same module):

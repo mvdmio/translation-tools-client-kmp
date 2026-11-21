@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-21: Push keeps translator edits
+
+Version 4.1.2 changes what `pushTranslations` does. **An upgrade changes what push does: a value TranslationTools holds outside the default Locale is no longer replaced by your local one.** Push used to send every local value in every Locale and TranslationTools replaced each stored value that differed, so a push from files pulled days ago could put old text back over a translator's fix, with no message.
+
+Push still sends every default-locale value, as before. Outside the default Locale it sends a local value only where TranslationTools has no value for that Key and Locale. Where your local value differs from the one TranslationTools holds, push prints a warning that names the Key, Origin, and Locale, and does not send it: `Your local value of 'home_title' in ':/strings.xml' (locale nl) differs from the one on TranslationTools, so push did not send it. ...`. To change such a value, edit it on TranslationTools, or run `pullTranslations` to copy the TranslationTools value into your file. A value TranslationTools holds empty is still filled from your file, and a new Key still uploads its value in every Locale. The default Locale is the `defaultLocale` setting, and for a String Catalog its own source language. The rule covers Android `strings.xml`, Apple `.strings`, `.stringsdict` and `.xcstrings`.
+
+Before the upload, push now reads each non-default Locale it is about to send from TranslationTools, one request per Locale, and none when your files hold only the default Locale. If a read fails, push fails with an error and uploads nothing. Push still sends only your local Keys: the read is only compared with your values. No API change.
+
 ## 2026-11-21: Pull edits strings.xml in place
 
 Version 4.1.1 fixes `pullTranslations` rewriting an existing `strings.xml`. Pull used to write each file again from the `<string>` and `<plurals>` it understood, so it dropped every `<string-array>` and other resource, comments, `xmlns:tools` and attributes such as `tools:ignore`, markup inside a value, and the element order. It now changes only what TranslationTools changed: an element whose value changed gets the new value, new Keys are added before `</resources>` in name order, and the element of a Key whose value is null is removed. Everything else stays as written, line endings included. A `<plurals>` the plugin cannot read is left as written with a warning, and pull warns with the Key when a changed `<string>` loses its markup. A `strings.xml` that does not exist yet is still written whole, sorted by name. No API change.

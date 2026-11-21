@@ -16,6 +16,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.gradle.api.GradleException
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -23,6 +24,7 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -209,17 +211,8 @@ class PushTranslationsTaskTests
          """.trimIndent()
       )
 
-      var capturedBody = ""
-      val client = createHttpClient(
-         MockEngine { request ->
-            capturedBody = (request.body as TextContent).text
-            respond(
-               content = """{"receivedKeyCount":7,"createdKeyCount":7,"updatedKeyCount":0,"removedKeyCount":0}""",
-               status = HttpStatusCode.OK,
-               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-            )
-         }
-      )
+      val server = FakeTranslationTools()
+      val client = server.client
 
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
       val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
@@ -234,7 +227,7 @@ class PushTranslationsTaskTests
 
       task.push()
 
-      val sent = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+      val sent = Json.parseToJsonElement(server.pushBodies.single()).jsonObject.getValue("items").jsonArray
          .map { it.jsonObject }
          .map { item ->
             listOf("origin", "locale", "key").joinToString("|") { item.getValue(it).jsonPrimitive.content } to
@@ -308,17 +301,8 @@ class PushTranslationsTaskTests
          """.trimIndent()
       )
 
-      var capturedBody = ""
-      val client = createHttpClient(
-         MockEngine { request ->
-            capturedBody = (request.body as TextContent).text
-            respond(
-               content = """{"receivedKeyCount":6,"createdKeyCount":6,"updatedKeyCount":0,"removedKeyCount":0}""",
-               status = HttpStatusCode.OK,
-               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-            )
-         }
-      )
+      val server = FakeTranslationTools()
+      val client = server.client
 
       val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
       val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
@@ -333,7 +317,7 @@ class PushTranslationsTaskTests
 
       task.push()
 
-      val sent = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
+      val sent = Json.parseToJsonElement(server.pushBodies.single()).jsonObject.getValue("items").jsonArray
          .map { it.jsonObject }
          .map { item ->
             listOf("origin", "locale", "key").joinToString("|") { item.getValue(it).jsonPrimitive.content } to
@@ -353,44 +337,359 @@ class PushTranslationsTaskTests
    }
 
    @Test
-   fun push_should_send_only_the_sorted_local_items_in_one_request_without_fetching()
+   fun push_should_send_no_value_for_a_non_default_value_that_differs_from_translationtools()
    {
-      val projectDir = createTempDirectory("translationtools-push-local-only").toFile()
-      File(projectDir, "res/values").mkdirs()
-      File(projectDir, "res/values/strings.xml").writeText(
-         "<resources><string name=\"b_title\">Bee</string><string name=\"a_title\">Ay</string></resources>"
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings("home_title" to "Home"),
+         "res/values-nl/strings.xml" to androidStrings("home_title" to "Start"),
+      )
+      val server = FakeTranslationTools(remoteByLocale = mapOf("nl" to remoteItems("home_title" to "Begin")))
+
+      pushWith(projectDir, server)
+
+      assertEquals(
+         listOf(
+            ":/strings.xml|en|home_title" to "Home",
+            ":/strings.xml|nl|home_title" to null,
+         ),
+         sentValues(server.pushBodies.single()),
+      )
+   }
+
+   @Test
+   fun push_should_fill_a_non_default_value_translationtools_holds_empty_and_never_send_an_empty_string()
+   {
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings("a" to "A", "b" to "B", "c" to "C", "d" to "D", "e" to "E"),
+         "res/values-nl/strings.xml" to androidStrings("a" to "Aa", "b" to "Bb", "c" to "Cc", "d" to "", "e" to ""),
+      )
+      val server = FakeTranslationTools(
+         remoteByLocale = mapOf(
+            "nl" to """[
+               {"origin":":/strings.xml","key":"a","value":null},
+               {"origin":":/strings.xml","key":"b","value":""},
+               {"origin":":/strings.xml","key":"d","value":"Dd remote"}
+            ]""",
+         ),
       )
 
-      val requests = mutableListOf<Pair<HttpMethod, String>>()
-      var capturedBody = ""
-      val client = createHttpClient(
-         MockEngine { request ->
-            requests += request.method to request.url.encodedPath
-            capturedBody = (request.body as TextContent).text
-            respond(
-               content = """{"receivedKeyCount":2,"createdKeyCount":0,"updatedKeyCount":0,"removedKeyCount":0}""",
-               status = HttpStatusCode.OK,
-               headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-            )
-         }
+      pushWith(projectDir, server)
+
+      assertEquals(
+         listOf(
+            ":/strings.xml|nl|a" to "Aa",
+            ":/strings.xml|nl|b" to "Bb",
+            ":/strings.xml|nl|c" to "Cc",
+            ":/strings.xml|nl|d" to null,
+            ":/strings.xml|nl|e" to null,
+         ),
+         sentValues(server.pushBodies.single()).filter { it.first.contains("|nl|") },
+      )
+   }
+
+   @Test
+   fun push_should_send_no_value_for_a_non_default_value_equal_to_the_one_on_translationtools()
+   {
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings("home_title" to "Home"),
+         "res/values-nl/strings.xml" to androidStrings("home_title" to "Start"),
+      )
+      val server = FakeTranslationTools(remoteByLocale = mapOf("nl" to remoteItems("home_title" to "Start")))
+
+      pushWith(projectDir, server)
+
+      assertEquals(
+         listOf(":/strings.xml|en|home_title" to "Home", ":/strings.xml|nl|home_title" to null),
+         sentValues(server.pushBodies.single()),
+      )
+   }
+
+   @Test
+   fun push_should_still_send_a_default_locale_value_that_differs_from_translationtools_without_reading_that_locale()
+   {
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings("home_title" to "Home"),
+         "res/values-nl/strings.xml" to androidStrings("home_title" to "Start"),
+      )
+      val server = FakeTranslationTools(
+         remoteByLocale = mapOf(
+            "en" to remoteItems("home_title" to "Old home"),
+            "nl" to remoteItems("home_title" to "Start"),
+         ),
       )
 
-      val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
-      val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
-      task.apiKey.set("test-key")
-      task.defaultLocale.set("en")
-      task.resourceDirectories.from(File(projectDir, "res"))
-      task.keyOverrides.set(emptyMap())
-      task.projectPathInput.set(project.path)
-      task.baseUrl.set(BASE_URL)
-      task.httpClientFactory = { client }
+      pushWith(projectDir, server)
 
-      task.push()
+      assertEquals(listOf("GET /api/v1/translations/nl", "POST /api/v1/translations/project"), server.requests)
+      assertEquals("Home", sentValues(server.pushBodies.single()).toMap()[":/strings.xml|en|home_title"])
+   }
 
-      assertEquals(listOf(HttpMethod.Post to "/api/v1/translations/project"), requests)
-      val sentKeys = Json.parseToJsonElement(capturedBody).jsonObject.getValue("items").jsonArray
-         .map { it.jsonObject.getValue("key").jsonPrimitive.content }
-      assertEquals(listOf("a_title", "b_title"), sentKeys)
+   @Test
+   fun push_should_never_send_a_key_only_translationtools_has_and_keep_the_sorted_order()
+   {
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings("b_title" to "Bee", "a_title" to "Ay"),
+         "res/values-nl/strings.xml" to androidStrings("b_title" to "Bee nl", "a_title" to "Ay nl"),
+      )
+      val server = FakeTranslationTools(remoteByLocale = mapOf("nl" to remoteItems("only_remote" to "Alleen", "a_title" to "Ay nl")))
+
+      pushWith(projectDir, server)
+
+      assertEquals(
+         listOf(
+            ":/strings.xml|en|a_title",
+            ":/strings.xml|en|b_title",
+            ":/strings.xml|nl|a_title",
+            ":/strings.xml|nl|b_title",
+         ),
+         sentValues(server.pushBodies.single()).map { it.first },
+      )
+   }
+
+   @Test
+   fun push_should_make_only_the_upload_request_when_the_local_files_hold_only_the_default_locale()
+   {
+      val projectDir = createPushProject("res/values/strings.xml" to androidStrings("b_title" to "Bee", "a_title" to "Ay"))
+      val server = FakeTranslationTools()
+
+      pushWith(projectDir, server)
+
+      assertEquals(listOf("POST /api/v1/translations/project"), server.requests)
+      assertEquals(
+         listOf(":/strings.xml|en|a_title" to "Ay", ":/strings.xml|en|b_title" to "Bee"),
+         sentValues(server.pushBodies.single()),
+      )
+   }
+
+   @Test
+   fun push_should_fail_with_the_status_and_upload_nothing_when_the_read_gets_an_error_status()
+   {
+      val projectDir = createNlProject()
+      val server = FakeTranslationTools(readStatus = HttpStatusCode.InternalServerError, readBody = "boom")
+
+      val exception = assertFailsWith<GradleException> { pushWith(projectDir, server) }
+
+      assertEquals("TranslationTools locale 'nl' request failed with status 500: boom", exception.message)
+      assertEquals(listOf("GET /api/v1/translations/nl"), server.requests)
+   }
+
+   @Test
+   fun push_should_fail_with_the_transport_error_when_the_read_cannot_connect()
+   {
+      val projectDir = createFormatSpecifierProject(
+         defaultStrings = """<string name="home_title">Home</string>""",
+         dutchStrings = """<string name="home_title">Start</string>""",
+      )
+
+      val result = GradleRunner.create()
+         .withProjectDir(projectDir)
+         .withPluginClasspath()
+         .withArguments("pushTranslations", "-Ptranslationtools.baseUrl=http://127.0.0.1:1")
+         .buildAndFail()
+
+      assertEquals(TaskOutcome.FAILED, result.task(":pushTranslations")?.outcome)
+      assertTrue(result.output.contains("TranslationTools locale 'nl' request failed: "), result.output)
+      assertFalse(result.output.contains("Push complete."), result.output)
+   }
+
+   @Test
+   fun push_should_fail_quoting_the_parse_error_and_upload_nothing_when_the_read_is_not_a_translation_list()
+   {
+      val projectDir = createNlProject()
+      val server = FakeTranslationTools(readBody = "not json")
+
+      val exception = assertFailsWith<GradleException> { pushWith(projectDir, server) }
+
+      assertTrue(exception.message.orEmpty().startsWith("Failed to parse TranslationTools locale 'nl' response. "), exception.message)
+      assertTrue(exception.message.orEmpty().contains("not json"), exception.message)
+      assertEquals(listOf("GET /api/v1/translations/nl"), server.requests)
+   }
+
+   @Test
+   fun push_should_treat_a_string_catalog_source_language_as_its_default_whatever_the_default_locale_setting_is()
+   {
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings(),
+         "ios/Localizable.xcstrings" to """
+            {
+              "sourceLanguage" : "de",
+              "strings" : {
+                "greeting" : {
+                  "localizations" : {
+                    "de" : { "stringUnit" : { "state" : "translated", "value" : "Hallo" } },
+                    "en" : { "stringUnit" : { "state" : "translated", "value" : "Hello" } }
+                  }
+                }
+              },
+              "version" : "1.0"
+            }
+         """.trimIndent(),
+      )
+      val server = FakeTranslationTools(
+         remoteByLocale = mapOf(
+            "de" to """[{"origin":":/Localizable.xcstrings","key":"greeting","value":"Hallo alt"}]""",
+            "en" to """[{"origin":":/Localizable.xcstrings","key":"greeting","value":"Hi"}]""",
+         ),
+      )
+
+      pushWith(projectDir, server)
+
+      assertEquals(listOf("GET /api/v1/translations/en", "POST /api/v1/translations/project"), server.requests)
+      assertEquals(
+         listOf(":/Localizable.xcstrings|de|greeting" to "Hallo", ":/Localizable.xcstrings|en|greeting" to null),
+         sentValues(server.pushBodies.single()),
+      )
+   }
+
+   @Test
+   fun push_should_upload_this_exact_body_for_a_worked_example_of_equal_differing_and_new_values()
+   {
+      val projectDir = createPushProject(
+         "res/values/strings.xml" to androidStrings("a_title" to "Ay", "b_title" to "Bee", "c_title" to "Cee"),
+         "res/values-nl/strings.xml" to androidStrings("a_title" to "Aa", "b_title" to "Bee nl", "c_title" to "Cee nl"),
+      )
+      val server = FakeTranslationTools(
+         remoteByLocale = mapOf(
+            "nl" to remoteItems("a_title" to "Aa", "b_title" to "Bee vertaald", "z_title" to "Zed"),
+         ),
+      )
+
+      pushWith(projectDir, server)
+
+      assertEquals(
+         """{"items":[""" +
+            """{"origin":":/strings.xml","locale":"en","key":"a_title","value":"Ay"},""" +
+            """{"origin":":/strings.xml","locale":"en","key":"b_title","value":"Bee"},""" +
+            """{"origin":":/strings.xml","locale":"en","key":"c_title","value":"Cee"},""" +
+            """{"origin":":/strings.xml","locale":"nl","key":"a_title","value":null},""" +
+            """{"origin":":/strings.xml","locale":"nl","key":"b_title","value":null},""" +
+            """{"origin":":/strings.xml","locale":"nl","key":"c_title","value":"Cee nl"}""" +
+            """]}""",
+         server.pushBodies.single(),
+      )
+   }
+
+   @Test
+   fun push_should_warn_with_the_exact_text_and_send_no_value_for_a_differing_non_default_value()
+   {
+      MockTranslationToolsServer(
+         localeResponses = mapOf("nl" to remoteItems("home_title" to "Begin")),
+      ).use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """<string name="home_title">Home</string>""",
+            dutchStrings = """<string name="home_title">Start</string>""",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         assertEquals(
+            listOf(
+               "Your local value of 'home_title' in ':/strings.xml' (locale nl) differs from the one on TranslationTools, so push did not send it. " +
+                  "Push never replaces a value outside the default Locale. To change the value, edit it on TranslationTools. " +
+                  "To copy the TranslationTools value into your file, run pullTranslations.",
+            ),
+            result.output.lines().filter { it.contains("differs from the one on TranslationTools") },
+         )
+         assertEquals(
+            listOf(":/strings.xml|en|home_title" to "Home", ":/strings.xml|nl|home_title" to null),
+            sentValues(server.pushBodies.single()),
+         )
+      }
+   }
+
+   @Test
+   fun push_should_not_warn_for_equal_values_and_upload_a_new_key_in_every_locale()
+   {
+      MockTranslationToolsServer(
+         localeResponses = mapOf("nl" to remoteItems("home_title" to "Start")),
+      ).use { server ->
+         val projectDir = createFormatSpecifierProject(
+            defaultStrings = """<string name="home_title">Home</string><string name="promo_title">Promo</string>""",
+            dutchStrings = """<string name="home_title">Start</string><string name="promo_title">Aanbieding</string>""",
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         assertFalse(result.output.contains("differs from the one on TranslationTools"), result.output)
+         assertEquals(
+            listOf(
+               ":/strings.xml|en|home_title" to "Home",
+               ":/strings.xml|en|promo_title" to "Promo",
+               ":/strings.xml|nl|home_title" to null,
+               ":/strings.xml|nl|promo_title" to "Aanbieding",
+            ),
+            sentValues(server.pushBodies.single()),
+         )
+      }
+   }
+
+   @Test
+   fun push_should_warn_with_each_files_origin_for_differing_strings_stringsdict_and_catalog_values()
+   {
+      MockTranslationToolsServer(
+         localeResponses = mapOf(
+            "nl" to remoteItemsByOrigin(
+               (":/Localizable.strings" to "Done") to "Klaar",
+               (":/Localizable.stringsdict" to "cart_items") to "{items, plural, one {# artikel} other {# artikelen}}",
+               (":/Catalog.xcstrings" to "greeting") to "Hoi",
+            ),
+         ),
+      ).use { server ->
+         val projectDir = createFormatSpecifierProject(defaultStrings = "", dutchStrings = "")
+         File(projectDir, "translationtools.yaml").appendText("appleResources:\n  resourceDirectories:\n    - ios\n")
+         File(projectDir, "ios/en.lproj").mkdirs()
+         File(projectDir, "ios/nl.lproj").mkdirs()
+         File(projectDir, "ios/en.lproj/Localizable.strings").writeText("\"Done\" = \"Done\";")
+         File(projectDir, "ios/nl.lproj/Localizable.strings").writeText("\"Done\" = \"Gedaan\";")
+         File(projectDir, "ios/en.lproj/Localizable.stringsdict").writeText(
+            stringsdictPlist(pluralEntry("cart_items", "items", "d", "one" to "%d item", "other" to "%d items")),
+         )
+         File(projectDir, "ios/nl.lproj/Localizable.stringsdict").writeText(
+            stringsdictPlist(pluralEntry("cart_items", "items", "d", "one" to "%d ding", "other" to "%d dingen")),
+         )
+         File(projectDir, "ios/Catalog.xcstrings").writeText(
+            """
+            {
+              "sourceLanguage" : "en",
+              "strings" : {
+                "greeting" : {
+                  "localizations" : {
+                    "en" : { "stringUnit" : { "state" : "translated", "value" : "Hello" } },
+                    "nl" : { "stringUnit" : { "state" : "translated", "value" : "Hallo" } }
+                  }
+                }
+              },
+              "version" : "1.0"
+            }
+            """.trimIndent(),
+         )
+
+         val result = runGradle(projectDir, "pushTranslations", server.baseUrl)
+
+         assertEquals(TaskOutcome.SUCCESS, result.task(":pushTranslations")?.outcome)
+         val warnings = result.output.lines().filter { it.contains("differs from the one on TranslationTools") }
+         assertEquals(
+            listOf(
+               "'greeting' in ':/Catalog.xcstrings' (locale nl)",
+               "'Done' in ':/Localizable.strings' (locale nl)",
+               "'cart_items' in ':/Localizable.stringsdict' (locale nl)",
+            ),
+            warnings.map { it.removePrefix("Your local value of ").substringBefore(" differs") },
+         )
+         assertEquals(
+            listOf(
+               ":/Catalog.xcstrings|en|greeting" to "Hello",
+               ":/Catalog.xcstrings|nl|greeting" to null,
+               ":/Localizable.strings|en|Done" to "Done",
+               ":/Localizable.strings|nl|Done" to null,
+               ":/Localizable.stringsdict|en|cart_items" to "{items, plural, one {# item} other {# items}}",
+               ":/Localizable.stringsdict|nl|cart_items" to null,
+            ),
+            sentValues(server.pushBodies.single()).filter { !it.first.startsWith(":/strings.xml") },
+         )
+      }
    }
 
    @Test
@@ -556,6 +855,93 @@ private fun runGradle(projectDir: File, taskName: String, baseUrl: String) =
       .withPluginClasspath()
       .withArguments(taskName, "-Ptranslationtools.baseUrl=$baseUrl")
       .build()
+
+private fun createNlProject(): File =
+   createPushProject(
+      "res/values/strings.xml" to androidStrings("home_title" to "Home"),
+      "res/values-nl/strings.xml" to androidStrings("home_title" to "Start"),
+   )
+
+private fun createPushProject(vararg files: Pair<String, String>): File
+{
+   val projectDir = createTempDirectory("translationtools-push-rule").toFile()
+   files.forEach { (path, text) ->
+      val file = File(projectDir, path)
+      file.parentFile.mkdirs()
+      file.writeText(text)
+   }
+   return projectDir
+}
+
+private fun androidStrings(vararg entries: Pair<String, String>): String =
+   "<resources>" + entries.joinToString("") { (key, value) -> "<string name=\"$key\">$value</string>" } + "</resources>"
+
+/** A per-Locale read response holding each `key to value` under `:/strings.xml`. */
+private fun remoteItems(vararg entries: Pair<String, String>): String =
+   remoteItemsByOrigin(*entries.map { (key, value) -> (":/strings.xml" to key) to value }.toTypedArray())
+
+/** A per-Locale read response holding each `(origin to key) to value`. */
+private fun remoteItemsByOrigin(vararg entries: Pair<Pair<String, String>, String>): String =
+   entries.joinToString(prefix = "[", postfix = "]") { (originAndKey, value) ->
+      """{"origin":"${originAndKey.first}","key":"${originAndKey.second}","value":"$value"}"""
+   }
+
+/** The pushed items as `origin|locale|key` to value, in upload order. */
+private fun sentValues(body: String): List<Pair<String, String?>> =
+   Json.parseToJsonElement(body).jsonObject.getValue("items").jsonArray
+      .map { it.jsonObject }
+      .map { item ->
+         listOf("origin", "locale", "key").joinToString("|") { item.getValue(it).jsonPrimitive.content } to
+            item.getValue("value").jsonPrimitive.contentOrNull
+      }
+
+private fun pushWith(projectDir: File, server: FakeTranslationTools)
+{
+   val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+   val task = project.tasks.create("pushTranslations", PushTranslationsTask::class.java)
+   task.apiKey.set("test-key")
+   task.defaultLocale.set("en")
+   task.resourceDirectories.from(File(projectDir, "res"))
+   task.appleResourceDirectories.from(File(projectDir, "ios"))
+   task.keyOverrides.set(emptyMap())
+   task.projectPathInput.set(project.path)
+   task.baseUrl.set(BASE_URL)
+   task.httpClientFactory = { server.client }
+
+   task.push()
+}
+
+/** A TranslationTools stand-in: answers the per-Locale read from [remoteByLocale] (empty for any other Locale), or answers with [readStatus] and [readBody] instead. */
+private class FakeTranslationTools(
+   private val remoteByLocale: Map<String, String> = emptyMap(),
+   private val readStatus: HttpStatusCode = HttpStatusCode.OK,
+   private val readBody: String? = null,
+)
+{
+   val requests = mutableListOf<String>()
+   val pushBodies = mutableListOf<String>()
+   val client: HttpClient = createHttpClient(
+      MockEngine { request ->
+         requests += "${request.method.value} ${request.url.encodedPath}"
+         val json = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+         when {
+            request.method == HttpMethod.Post -> {
+               pushBodies += (request.body as TextContent).text
+               respond(
+                  content = """{"receivedKeyCount":1,"createdKeyCount":1,"updatedKeyCount":0,"removedKeyCount":0}""",
+                  status = HttpStatusCode.OK,
+                  headers = json,
+               )
+            }
+            else -> respond(
+               content = readBody ?: remoteByLocale[request.url.encodedPath.substringAfterLast('/')] ?: "[]",
+               status = readStatus,
+               headers = json,
+            )
+         }
+      }
+   )
+}
 
 private fun createHttpClient(engine: MockEngine): HttpClient
 {

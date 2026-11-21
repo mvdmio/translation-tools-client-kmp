@@ -17,12 +17,24 @@ internal class MockTranslationToolsServer(
    private val executor = Executors.newCachedThreadPool()
 
    val pushBodies = mutableListOf<String>()
+
+   /** Every request the server received, as `METHOD /path`, in arrival order. */
+   val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
    val baseUrl: String
 
    init
    {
       server.executor = executor
+      // A Locale without a configured response reads as empty, so a push that reads a Locale the test does not care about still works.
+      server.createContext("/api/v1/translations/") { exchange ->
+         requests += "${exchange.requestMethod} ${exchange.requestURI.path}"
+         if (exchange.requestMethod == "GET")
+            writeResponse(exchange, 200, "[]")
+         else
+            writeResponse(exchange, 405, "Method not allowed")
+      }
       server.createContext("/api/v1/translations/project") { exchange ->
+         requests += "${exchange.requestMethod} ${exchange.requestURI.path}"
          val body = exchange.requestBody.readBytes().toString(Charsets.UTF_8)
          when (exchange.requestMethod)
          {
@@ -37,6 +49,7 @@ internal class MockTranslationToolsServer(
       }
       localeResponses.forEach { (locale, response) ->
          server.createContext("/api/v1/translations/$locale") { exchange ->
+            requests += "${exchange.requestMethod} ${exchange.requestURI.path}"
             if (exchange.requestMethod == "GET")
                writeResponse(exchange, 200, response)
             else
