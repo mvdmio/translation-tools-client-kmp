@@ -16,7 +16,7 @@ Current scope:
 - supports Android XML `<string>` and `<plurals>` resources
 - generates `Translations.*` and `TranslationsBundledSnapshot`
 - supports Android, JVM, and iOS consumers through the KMP client
-- skips `<string-array>`
+- does not sync `<string-array>`: pull leaves it, and every other resource it does not sync, as written
 - optionally syncs Apple `.strings` files (`InfoPlist.strings`, `Localizable.strings`), Apple
   `.stringsdict` plurals, and Apple String Catalogs (`.xcstrings`) as a second source of truth — **sync-only**: push/pull plus the bundled `.lproj` files, with
   no generated `Translations.*` accessors and no runtime refresh (see [Apple `.strings` (iOS)](#apple-strings-ios))
@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.1.0/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.1.1/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **4.1.0** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.1.1** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.1.0")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.1.1")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:4.1.0")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.1.1")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.1.0" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.1.0" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.1.1" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.1.1" }
 ```
 
 ```kotlin
@@ -635,7 +635,9 @@ as it does for a `<string>`. A `<plurals>` with no items is sent with a null val
 resource with a warning. `generateTranslationResources` gives each `<plurals>` a `Translations.*`
 reference (its fallback is the default-locale Plural) and a `TranslationsBundledSnapshot` entry per locale.
 
-`pullTranslations` keeps each Key's element type. A Key that the default-locale `strings.xml` holds as
+`pullTranslations` keeps each Key's element type. A `<plurals>` whose value changed keeps its attributes and gets
+new `<item>` lines in CLDR order; a remote value that does not fit still leaves the element as written, with a
+warning. A Key that the default-locale `strings.xml` holds as
 `<plurals>` is written back as `<plurals>`, one `<item>` per form in CLDR order, keeping
 `translatable="false"`; a Key held as `<string>` stays a `<string>`, even when its value is ICU text. When
 the default-locale file has no element for the Key, the element in that locale's own file decides. A Key with
@@ -699,8 +701,15 @@ Available Gradle tasks:
   Downloads translations from TranslationTools and updates local XML (and Apple `.strings`, `.stringsdict` and `.xcstrings`).
   When codegen is enabled (default), pull then regenerates Kotlin resources. With
   `generated.enabled: false`, pull only writes resources — it does not run generate.
-  Existing entries are updated in place; new keys are added. Keys not managed remotely are written back
-  with `translatable="false"`.
+  Pull edits an existing `strings.xml` in place. It changes only the elements whose value changed in
+  TranslationTools, adds new Keys before `</resources>` sorted by name, and removes the element of a Key whose
+  value is null for that Locale. Comments, other resources such as `<string-array>`, attributes such as
+  `tools:ignore`, element order, line endings, and the XML header stay as written. A value that did not change
+  stays byte for byte, markup included. A changed `<string>` keeps its attributes but loses its markup, and pull
+  warns with the Key. A local `<plurals>` the plugin cannot read is left as written, with a warning. A
+  `strings.xml` that does not exist yet is written whole, sorted by name. Keys not managed remotely stay as
+  written; a whole-file write marks them `translatable="false"`. In a file on a single line, new elements get
+  no indentation.
 
 `generateTranslationResources` stays Android-only; it never reads Apple `.strings`. It
 remains registered when `generated.enabled` is `false`, so you can still run it by hand.
@@ -1002,7 +1011,7 @@ client.get(Translations.home_title)
 ### Migration notes
 
 - only XML `<string>` and `<plurals>` entries are generated
-- `<string-array>` is skipped and needs separate handling
+- `<string-array>` is not synced and needs separate handling; pull leaves it as written
 - generated files live under `build/generated/...`; do not edit them by hand
 - moving a string to a different XML file changes its translation origin in TranslationTools
 

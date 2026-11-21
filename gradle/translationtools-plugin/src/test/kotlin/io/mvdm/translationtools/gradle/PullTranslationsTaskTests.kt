@@ -499,7 +499,7 @@ class PullTranslationsTaskTests
          """
          <resources>
             <plurals name="cart_items">
-               <item quantity="other"># items in {cartName}</item>
+               <item quantity="other"># things in {cartName}</item>
                <item quantity="one"># item in {cartName}</item>
             </plurals>
             <string name="greeting">Hello {userName}!</string>
@@ -535,7 +535,6 @@ class PullTranslationsTaskTests
 
       assertEquals(
          """
-         <?xml version="1.0" encoding="utf-8"?>
          <resources>
             <plurals name="cart_items">
                <item quantity="one"># item in {cartName}</item>
@@ -543,13 +542,11 @@ class PullTranslationsTaskTests
             </plurals>
             <string name="greeting">Hello {userName}!</string>
          </resources>
-
          """.trimIndent(),
          File(projectDir, "res/values/strings.xml").readText(),
       )
       assertEquals(
          """
-         <?xml version="1.0" encoding="utf-8"?>
          <resources>
             <plurals name="cart_items">
                <item quantity="one"># produkt w {cartName}</item>
@@ -557,7 +554,6 @@ class PullTranslationsTaskTests
                <item quantity="many"># produktów w {cartName}</item>
             </plurals>
          </resources>
-
          """.trimIndent(),
          File(projectDir, "res/values-pl/strings.xml").readText(),
       )
@@ -579,16 +575,10 @@ class PullTranslationsTaskTests
       )
 
       assertEquals(
-         """
-         <?xml version="1.0" encoding="utf-8"?>
-         <resources>
-            <plurals name="unit_count" translatable="false">
-               <item quantity="one">&lt;b&gt;#&lt;/b&gt; unit</item>
-               <item quantity="other"># units &amp; more</item>
-            </plurals>
-         </resources>
-
-         """.trimIndent(),
+         "<resources><plurals name=\"unit_count\" translatable=\"false\">\n" +
+            "   <item quantity=\"one\">&lt;b&gt;#&lt;/b&gt; unit</item>\n" +
+            "   <item quantity=\"other\"># units &amp; more</item>\n" +
+            "</plurals></resources>",
          File(projectDir, "res/values/strings.xml").readText(),
       )
    }
@@ -607,8 +597,7 @@ class PullTranslationsTaskTests
       )
 
       assertEquals(
-         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
-            "   <string name=\"cart_items\">{count, plural, one {# item} other {# items}}</string>\n</resources>\n",
+         "<resources><string name=\"cart_items\">{count, plural, one {# item} other {# items}}</string></resources>",
          File(projectDir, "res/values/strings.xml").readText(),
       )
    }
@@ -633,18 +622,13 @@ class PullTranslationsTaskTests
       )
 
       assertEquals(
-         """
-         <?xml version="1.0" encoding="utf-8"?>
-         <resources>
-            <string name="home_title">Home</string>
-            <plurals name="new_items">
-               <item quantity="one"># item</item>
-               <item quantity="other"># items</item>
-            </plurals>
-            <string name="zero_items">{count, plural, =0 {none} other {# items}}</string>
-         </resources>
-
-         """.trimIndent(),
+         "<resources><string name=\"home_title\">Home</string>\n" +
+            "<plurals name=\"new_items\">\n" +
+            "   <item quantity=\"one\"># item</item>\n" +
+            "   <item quantity=\"other\"># items</item>\n" +
+            "</plurals>\n" +
+            "<string name=\"zero_items\">{count, plural, =0 {none} other {# items}}</string>\n" +
+            "</resources>",
          File(projectDir, "res/values/strings.xml").readText(),
       )
    }
@@ -674,16 +658,14 @@ class PullTranslationsTaskTests
       )
 
       assertEquals(
-         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
-            "   <plurals name=\"only_pl\">\n" +
-            "      <item quantity=\"one\"># nowy</item>\n" +
-            "      <item quantity=\"other\"># nowych</item>\n" +
-            "   </plurals>\n</resources>\n",
+         "<resources><plurals name=\"only_pl\">\n" +
+            "   <item quantity=\"one\"># nowy</item>\n" +
+            "   <item quantity=\"other\"># nowych</item>\n" +
+            "</plurals></resources>",
          File(projectDir, "res/values-pl/strings.xml").readText(),
       )
       assertEquals(
-         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
-            "   <string name=\"only_pl\">$plural</string>\n</resources>\n",
+         "<resources><string name=\"only_pl\">$plural</string></resources>",
          File(projectDir, "res/values-nl/strings.xml").readText(),
       )
    }
@@ -702,15 +684,11 @@ class PullTranslationsTaskTests
          remoteByLocale = mapOf("en" to listOf(remoteItem("cart_items", "{count, plural, =0 {none} other {# items}}"))),
       )
 
-      assertEquals(
-         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
-            "   <plurals name=\"cart_items\">\n      <item quantity=\"other\"># items</item>\n   </plurals>\n</resources>\n",
-         File(projectDir, "res/values/strings.xml").readText(),
-      )
+      assertEquals(original, File(projectDir, "res/values/strings.xml").readText())
    }
 
    @Test
-   fun pull_should_write_a_local_plurals_resource_back_with_every_item_intact_when_its_value_is_not_a_plural()
+   fun pull_should_leave_a_local_plurals_resource_with_every_item_intact_when_its_value_is_not_a_plural()
    {
       val projectDir = createTempDirectory("translationtools-pull-stray-brace").toFile()
       File(projectDir, "res/values").mkdirs()
@@ -731,65 +709,104 @@ class PullTranslationsTaskTests
 
       assertEquals(
          """
-         <?xml version="1.0" encoding="utf-8"?>
          <resources>
             <string name="home_title">Start</string>
-            <plurals name="odd">
-               <item quantity="one">a } b</item>
-               <item quantity="other">it&apos;s # items</item>
-            </plurals>
+            <plurals name="odd"><item quantity="one">a } b</item><item quantity="other">it's # items</item></plurals>
          </resources>
-
          """.trimIndent(),
          File(projectDir, "res/values/strings.xml").readText(),
       )
    }
 
    @Test
-   fun mergePulledLocale_should_warn_with_key_origin_and_locale_when_the_remote_value_does_not_fit_a_plurals_resource()
+   fun pulledLocaleChanges_should_warn_with_key_origin_and_locale_when_the_remote_value_does_not_fit_a_plurals_resource()
    {
-      val existing = parseStringsFile(
+      val local = parseStringsFile(
          """<resources><plurals name="cart_items"><item quantity="other"># items</item></plurals></resources>""",
-      ).imported.associateBy { it.resourceName }
+      )
+      val existing = local.imported.associateBy { it.resourceName }
 
-      val exactCase = mergePulledLocale(
+      val exactCase = pulledLocaleChanges(
          origin = ":/strings.xml",
          locale = "en",
-         existing = existing,
+         local = local,
          defaultLocaleExisting = existing,
          remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "cart_items", mapOf("en" to "{count, plural, =0 {none} other {# items}}"))),
+         keyOverrides = emptyMap(),
       )
-      val plainText = mergePulledLocale(
+      val plainText = pulledLocaleChanges(
          origin = ":/strings.xml",
          locale = "en",
-         existing = existing,
+         local = local,
          defaultLocaleExisting = existing,
          remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "cart_items", mapOf("en" to "plain text"))),
+         keyOverrides = emptyMap(),
       )
 
       val expected = listOf("'cart_items' in ':/strings.xml' (locale en) is not a Plural that fits a <plurals> resource, so pull left it unchanged.")
       assertEquals(expected, exactCase.warnings)
       assertEquals(expected, plainText.warnings)
-      assertEquals(existing.values.toList(), exactCase.entries)
+      assertEquals(emptyList(), exactCase.changes)
    }
 
    @Test
-   fun mergePulledLocale_should_write_nothing_for_a_plurals_key_without_a_local_element_when_the_remote_value_does_not_fit()
+   fun pulledLocaleChanges_should_write_nothing_for_a_plurals_key_without_a_local_element_when_the_remote_value_does_not_fit()
    {
       val existingDefault = parseStringsFile(
          """<resources><plurals name="cart_items"><item quantity="other"># items</item></plurals></resources>""",
       ).imported.associateBy { it.resourceName }
 
-      val merged = mergePulledLocale(
+      val changes = pulledLocaleChanges(
          origin = ":/strings.xml",
          locale = "pl",
-         existing = emptyMap(),
+         local = ParsedAndroidStringsFile(emptyList(), emptyList()),
          defaultLocaleExisting = existingDefault,
          remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "cart_items", mapOf("pl" to "plain text"))),
+         keyOverrides = emptyMap(),
       )
 
-      assertEquals(emptyList(), merged.entries)
-      assertEquals(1, merged.warnings.size)
+      assertEquals(emptyList(), changes.changes)
+      assertEquals(1, changes.warnings.size)
+   }
+
+   @Test
+   fun pulledLocaleChanges_should_warn_with_key_origin_and_locale_and_write_nothing_for_a_skipped_local_element()
+   {
+      val local = parseStringsFile(
+         """<resources><plurals name="cart"><item quantity="lots">many</item></plurals></resources>""",
+      )
+
+      val changes = pulledLocaleChanges(
+         origin = ":/strings.xml",
+         locale = "nl",
+         local = local,
+         defaultLocaleExisting = emptyMap(),
+         remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "cart", mapOf("nl" to "{count, plural, one {# kar} other {# karren}}"))),
+         keyOverrides = emptyMap(),
+      )
+
+      assertEquals(emptyList(), changes.changes)
+      assertEquals(
+         listOf("'cart' in ':/strings.xml' (locale nl) has a local element pull cannot read (unknown plurals quantity 'lots'), so pull left it unchanged."),
+         changes.warnings,
+      )
+   }
+
+   @Test
+   fun pulledLocaleChanges_should_address_an_overridden_key_by_its_resource_name()
+   {
+      val local = parseStringsFile("""<resources><string name="home_title">Home</string></resources>""")
+
+      val changes = pulledLocaleChanges(
+         origin = ":/strings.xml",
+         locale = "en",
+         local = local,
+         defaultLocaleExisting = emptyMap(),
+         remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "screen.home", mapOf("en" to "Start"))),
+         keyOverrides = mapOf("home_title" to "screen.home"),
+      )
+
+      assertEquals(listOf(PulledChange("screen.home", ParsedAndroidResourceValue("home_title", "Start", true))), changes.changes)
    }
 
    @Test
@@ -813,28 +830,29 @@ class PullTranslationsTaskTests
       )
 
       assertEquals(
-         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n   <string name=\"home_title\">Home</string>\n</resources>\n",
+         "<resources>\n   <string name=\"home_title\">Home</string>\n</resources>",
          File(projectDir, "res/values/strings.xml").readText(),
       )
    }
 
    @Test
-   fun mergePulledLocale_should_remove_a_plurals_resource_without_a_warning_when_the_remote_value_is_null()
+   fun pulledLocaleChanges_should_remove_a_plurals_resource_without_a_warning_when_the_remote_value_is_null()
    {
-      val existing = parseStringsFile(
+      val local = parseStringsFile(
          """<resources><plurals name="cart_items"><item quantity="other"># items</item></plurals></resources>""",
-      ).imported.associateBy { it.resourceName }
-
-      val merged = mergePulledLocale(
-         origin = ":/strings.xml",
-         locale = "en",
-         existing = existing,
-         defaultLocaleExisting = existing,
-         remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "cart_items", mapOf("en" to null))),
       )
 
-      assertEquals(emptyList(), merged.warnings)
-      assertEquals(emptyList(), merged.entries.filter { it.value != null })
+      val changes = pulledLocaleChanges(
+         origin = ":/strings.xml",
+         locale = "en",
+         local = local,
+         defaultLocaleExisting = local.imported.associateBy { it.resourceName },
+         remoteEntries = listOf(PulledTranslationItem(":/strings.xml", "cart_items", mapOf("en" to null))),
+         keyOverrides = emptyMap(),
+      )
+
+      assertEquals(emptyList(), changes.warnings)
+      assertEquals(listOf(PulledChange("cart_items", ParsedAndroidResourceValue("cart_items", null, true))), changes.changes)
    }
 
    @Test
@@ -873,9 +891,14 @@ private fun MockRequestHandleScope.respondJson(content: String) = respond(
    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
 )
 
-private fun remoteItem(key: String, value: String?) = TranslationItemResponse(origin = ":/strings.xml", key = key, value = value)
+internal fun remoteItem(key: String, value: String?) = TranslationItemResponse(origin = ":/strings.xml", key = key, value = value)
 
-private fun runPull(projectDir: File, locales: List<String>, remoteByLocale: Map<String, List<TranslationItemResponse>>)
+internal fun runPull(
+   projectDir: File,
+   locales: List<String>,
+   remoteByLocale: Map<String, List<TranslationItemResponse>>,
+   keyOverrides: Map<String, String> = emptyMap(),
+)
 {
    val json = Json { encodeDefaults = true }
    val client = createHttpClient(
@@ -898,7 +921,7 @@ private fun runPull(projectDir: File, locales: List<String>, remoteByLocale: Map
    task.defaultLocale.set("en")
    task.resourceDirectories.from(File(projectDir, "res"))
    task.appleResourceDirectories.from()
-   task.keyOverrides.set(emptyMap())
+   task.keyOverrides.set(keyOverrides)
    task.configuredLocales.set(locales)
    task.projectPathInput.set(project.path)
    task.baseUrl.set(BASE_URL)

@@ -45,13 +45,26 @@ class PushPullConfigurationCacheTests
       MockTranslationToolsServer(
          projectResponse = """{"locales":["en","nl"],"defaultLocale":"en"}""",
          localeResponses = mapOf(
-            "en" to """[{"origin":":/strings.xml","key":"home_title","value":"Home"}]""",
+            "en" to """[{"origin":":/strings.xml","key":"home_title","value":"Home page"}]""",
             "nl" to """[{"origin":":/strings.xml","key":"home_title","value":"Start"}]""",
          ),
       ).use { server ->
          val projectDir = createTempDirectory("translationtools-pull-cc").toFile()
          writeNonKmpBuildFiles(projectDir)
          writeStandardTestFixtures(projectDir, locales = listOf("en", "nl"))
+         val enFile = File(projectDir, "src/androidMain/res/values/strings.xml")
+         enFile.writeText(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <resources>
+               <!-- Keep this comment -->
+               <string name="home_title">Home</string>
+               <string-array name="colors">
+                  <item>Red</item>
+               </string-array>
+            </resources>
+            """.trimIndent()
+         )
 
          val first = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, first.task(":pullTranslations")?.outcome)
@@ -59,6 +72,19 @@ class PushPullConfigurationCacheTests
          assertTrue(nlFile.exists())
          assertTrue(nlFile.readText().contains("home_title"))
          assertTrue(nlFile.readText().contains("Start"))
+         assertEquals(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <resources>
+               <!-- Keep this comment -->
+               <string name="home_title">Home page</string>
+               <string-array name="colors">
+                  <item>Red</item>
+               </string-array>
+            </resources>
+            """.trimIndent(),
+            enFile.readText(),
+         )
 
          val second = runWithConfigurationCache(projectDir, "pullTranslations", server.baseUrl)
          assertEquals(TaskOutcome.SUCCESS, second.task(":pullTranslations")?.outcome)

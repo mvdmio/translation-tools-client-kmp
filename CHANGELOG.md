@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21: Pull edits strings.xml in place
+
+Version 4.1.1 fixes `pullTranslations` rewriting an existing `strings.xml`. Pull used to write each file again from the `<string>` and `<plurals>` it understood, so it dropped every `<string-array>` and other resource, comments, `xmlns:tools` and attributes such as `tools:ignore`, markup inside a value, and the element order. It now changes only what TranslationTools changed: an element whose value changed gets the new value, new Keys are added before `</resources>` in name order, and the element of a Key whose value is null is removed. Everything else stays as written, line endings included. A `<plurals>` the plugin cannot read is left as written with a warning, and pull warns with the Key when a changed `<string>` loses its markup. A `strings.xml` that does not exist yet is still written whole, sorted by name. No API change.
+
 ## 2026-11-21: Placeholder warnings reach the platform log
 
 Version 4.1.0 shows the Placeholder warnings the runtime client already worked out. A missing Placeholder, a binding the value does not use, a Global placeholder whose resolver throws or returns null, and a Plural looked up without a number now write a warning to the platform log: Logcat on Android (tag `TranslationTools`, warning level), standard error on JVM, and `NSLog` on iOS. **An app that upgrades starts seeing these warnings with no code change.**

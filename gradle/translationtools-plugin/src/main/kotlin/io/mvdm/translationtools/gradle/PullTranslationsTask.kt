@@ -120,15 +120,21 @@ abstract class PullTranslationsTask : DefaultTask()
                 effectiveLocales.forEach { locale ->
                   val valuesDirectory = toAndroidValuesDirectory(locale, normalizedDefaultLocale)
                   val targetFile = File(targetRoot, "$valuesDirectory/$baseFile")
-                  val existing = if (targetFile.exists()) parseStringsFile(targetFile.readText()).imported.associateBy { it.resourceName } else emptyMap()
-                  val merged = mergePulledLocale(origin, locale, existing, defaultLocaleExisting, entries)
-                  merged.warnings.forEach { warning -> logger.warn(warning) }
+                  val localText = if (targetFile.exists()) targetFile.readText() else null
+                  val localFile = localText?.let(::parseStringsFile) ?: ParsedAndroidStringsFile(emptyList(), emptyList())
+                  val changes = pulledLocaleChanges(origin, locale, localFile, defaultLocaleExisting, entries, keyOverrides.getOrElse(emptyMap()))
+                  changes.warnings.forEach { warning -> logger.warn(warning) }
 
-                  writeStringsFile(
-                     targetFile,
-                     merged.entries.sortedBy { it.resourceName },
-                  )
-               }
+                  if (localText == null) {
+                     writeStringsFile(targetFile, changes.changes.map { it.resource })
+                  }
+                  else {
+                     val edited = editStringsXml(localText, origin, locale, changes.changes)
+                     edited.warnings.forEach { warning -> logger.warn(warning) }
+                     if (edited.text != localText)
+                        targetFile.writeText(edited.text)
+                  }
+                }
             }
 
             if (appleDiscovery != null) {
@@ -349,93 +355,87 @@ internal data class PulledTranslationItem(
    val valuesByLocale: Map<String, String?>,
 )
 
-internal data class MergedStringsFile(
-   val entries: List<ParsedAndroidResourceValue>,
+internal data class PulledLocaleChanges(
+   val changes: List<PulledChange>,
    val warnings: List<String>,
 )
 
 /**
- * Applies the [remoteEntries] values for [locale] to the [existing] resources of that locale's file. A Key keeps its element
- * type from [defaultLocaleExisting], else from [existing]; with neither, it becomes `<plurals>` when its remote value is a
- * Plural that fits one. A `<plurals>` Key whose remote value does not fit is left as it is, with a warning.
+ * Works out what pull writes into the [local] file of [locale]: the resources whose [remoteEntries] value differs from the
+ * local one, and a null-valued resource for each local element whose remote value is null. A Key keeps its element type
+ * from [defaultLocaleExisting], else from the local element; with neither, it becomes `<plurals>` when its remote value is a
+ * Plural that fits one. A `<plurals>` Key whose remote value does not fit, and a Key whose local element the parser skipped,
+ * are left as they are, with a warning. Elements are addressed by resource name, so a Key under [keyOverrides] finds its own.
  */
-internal fun mergePulledLocale(
+internal fun pulledLocaleChanges(
    origin: String,
    locale: String,
-   existing: Map<String, ParsedAndroidResourceValue>,
+   local: ParsedAndroidStringsFile,
    defaultLocaleExisting: Map<String, ParsedAndroidResourceValue>,
    remoteEntries: List<PulledTranslationItem>,
-): MergedStringsFile
+   keyOverrides: Map<String, String>,
+): PulledLocaleChanges
 {
-   val merged = existing.toMutableMap()
+   val existing = local.imported.associateBy { it.resourceName }
+   val skipped = local.skipped.associateBy { it.resourceName }
+   val resourceNameByKey = keyOverrides.entries.associate { it.value to it.key }
+   val changes = mutableListOf<PulledChange>()
    val warnings = mutableListOf<String>()
 
    remoteEntries.forEach { entry ->
       if (!entry.valuesByLocale.containsKey(locale))
          return@forEach
 
+      val resourceName = resourceNameByKey[entry.key] ?: entry.key
       val remoteValue = entry.valuesByLocale[locale]
-      val existingEntry = merged[entry.key]
+      val existingEntry = existing[resourceName]
       val managedRemotely = existingEntry?.managedRemotely ?: true
       val remoteItems = remoteValue?.let(::pluralValueToAndroidItems)
-      val isPlurals = (defaultLocaleExisting[entry.key] ?: existingEntry)?.let { it.pluralItems != null } ?: (remoteItems != null)
+      val isPlurals = (defaultLocaleExisting[resourceName] ?: existingEntry)?.let { it.pluralItems != null } ?: (remoteItems != null)
 
-      merged[entry.key] = when {
-         remoteValue == null -> ParsedAndroidResourceValue(entry.key, null, managedRemotely)
-         !isPlurals -> ParsedAndroidResourceValue(entry.key, remoteValue, managedRemotely)
-         remoteItems != null -> pluralsResource(entry.key, remoteItems, managedRemotely)
+      val skippedElement = skipped[resourceName]
+      if (skippedElement != null) {
+         if (remoteValue != null)
+            warnings += "'${entry.key}' in '$origin' (locale $locale) has a local element pull cannot read (${skippedElement.reason}), so pull left it unchanged."
+         return@forEach
+      }
+
+      val updated = when {
+         remoteValue == null -> ParsedAndroidResourceValue(resourceName, null, managedRemotely)
+         !isPlurals -> ParsedAndroidResourceValue(resourceName, remoteValue, managedRemotely)
+         remoteItems != null -> pluralsResource(resourceName, remoteItems, managedRemotely)
          else -> {
             warnings += "'${entry.key}' in '$origin' (locale $locale) is not a Plural that fits a <plurals> resource, so pull left it unchanged."
             return@forEach
          }
       }
+
+      val changed = when {
+         existingEntry == null -> updated.value != null
+         updated.value == null -> true
+         else -> existingEntry.pluralItems != updated.pluralItems || existingEntry.value.orEmpty() != updated.value
+      }
+      if (changed)
+         changes += PulledChange(entry.key, updated)
    }
 
-   return MergedStringsFile(merged.values.toList(), warnings)
+   return PulledLocaleChanges(changes, warnings)
 }
 
 internal fun writeStringsFile(output: File, entries: List<ParsedAndroidResourceValue>)
 {
    output.parentFile.mkdirs()
-   val presentEntries = entries.filter { it.value != null }
    val rendered = buildString {
       appendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
       appendLine("<resources>")
-      presentEntries.forEach { entry ->
-         val element = if (entry.pluralItems == null) "string" else "plurals"
-         append("   <$element name=\"")
-         append(entry.resourceName)
-         append("\"")
-         if (!entry.managedRemotely)
-            append(" translatable=\"false\"")
-         append(">")
-         if (entry.pluralItems == null) {
-            append(escapeXml(entry.value.orEmpty()))
-         }
-         else {
-            appendLine()
-            entry.pluralItems.forEach { item ->
-               appendLine("      <item quantity=\"${item.quantity.keyword}\">${escapeXml(item.text)}</item>")
-            }
-            append("   ")
-         }
-         appendLine("</$element>")
+      entries.filter { it.value != null }.sortedBy { it.resourceName }.forEach { entry ->
+         appendLine("   ${renderAndroidElement(entry, "   ", "\n")}")
       }
       appendLine("</resources>")
    }
 
    if (!output.exists() || output.readText() != rendered)
       output.writeText(rendered)
-}
-
-private fun escapeXml(value: String): String
-{
-   return value
-      .replace("&", "&amp;")
-      .replace("<", "&lt;")
-      .replace(">", "&gt;")
-      .replace("\"", "&quot;")
-      .replace("'", "&apos;")
 }
 
 internal fun toAndroidValuesDirectory(locale: String, defaultLocale: String): String
