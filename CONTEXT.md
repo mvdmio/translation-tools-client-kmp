@@ -32,6 +32,18 @@ The stable identifier of a translatable entry within its origin (e.g. `home_titl
 **Locale**:
 A language (optionally region) a value is translated into, e.g. `en`, `nl`, `pt-br`.
 
+**Default locale**:
+The Locale a developer writes the Source of truth in, set by `defaultLocale`. Every other
+Locale is a translation of it. Its Keys come only from the local files, and its values are
+edited in both the local files and TranslationTools.
+_Avoid_: source language, base locale, base language.
+
+**Synced value**:
+For one Key in the Default locale, the value the local file and TranslationTools both held
+after the last pull or push that touched that Key. A value that differs from it changed since then, on
+the side where it differs. A Key that has never been pushed or pulled has no Synced value.
+_Avoid_: base value, last-known value, snapshot.
+
 **Bundled fallback**:
 Translations shipped inside the app build so it works offline / before the first remote
 refresh. For Android/KMP this is the generated `TranslationsBundledSnapshot`; for iOS it
