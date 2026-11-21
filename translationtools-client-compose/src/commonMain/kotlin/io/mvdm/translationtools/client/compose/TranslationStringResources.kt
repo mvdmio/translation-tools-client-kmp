@@ -18,7 +18,7 @@ internal fun initialStringResourceValue(
    locale: String?,
 ): String
 {
-   return client.getCached(resource, locale)
+   return initialStringResourceValue(client, BoundTranslationStringResource(resource), locale)
 }
 
 internal fun initialStringResourceValue(
@@ -36,12 +36,7 @@ public fun stringResource(
    locale: String? = null,
 ): String
 {
-   val client = LocalTranslationToolsClient.current
-   val resolvedLocale = resolveStringResourceLocale(locale, LocalTranslationToolsLocale.current)
-   val value by client.observe(resource, resolvedLocale).collectAsState(
-      initial = initialStringResourceValue(client, resource, resolvedLocale),
-   )
-   return value
+   return stringResource(BoundTranslationStringResource(resource), locale)
 }
 
 /**

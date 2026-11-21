@@ -1,6 +1,7 @@
 package io.mvdm.translationtools.client.compose
 
 import io.mvdm.translationtools.client.BoundTranslationStringResource
+import io.mvdm.translationtools.client.placeholders.PlaceholderSubstitutionException
 import io.mvdm.translationtools.client.ProjectMetadata
 import io.mvdm.translationtools.client.StoredTranslations
 import io.mvdm.translationtools.client.TranslationItem
@@ -12,6 +13,7 @@ import io.mvdm.translationtools.client.TranslationToolsClient
 import io.mvdm.translationtools.client.TranslationToolsClientOptions
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlinx.coroutines.test.runTest
 import kotlin.time.Instant
 
@@ -65,15 +67,81 @@ class TranslationStringResourcesTests
 
       assertEquals("Hello Sam!", initialStringResourceValue(client, bound, "en"))
    }
+
+   @Test
+   fun initialStringResourceValue_should_fill_a_global_placeholder_in_a_plain_resource() = runTest {
+      val ref = TranslationRef(TEST_ORIGIN, "welcome")
+      val client = createClient(
+         localeItems = listOf(TranslationItem(ref, "Welcome to {appName}")),
+         globalPlaceholders = mapOf("appName" to { "My App" }),
+      )
+      client.initialize()
+      val resource = TranslationStringResource(ref)
+
+      assertEquals("Welcome to My App", initialStringResourceValue(client, resource, "en"))
+      assertEquals(client.get(resource, "en"), initialStringResourceValue(client, resource, "en"))
+   }
+
+   @Test
+   fun initialStringResourceValue_should_return_a_plain_value_without_braces_unchanged() = runTest {
+      val ref = TranslationRef(TEST_ORIGIN, "home_title")
+      val items = listOf(TranslationItem(ref, "Home"))
+      val withoutGlobals = createClient(localeItems = items)
+      val withGlobals = createClient(localeItems = items, globalPlaceholders = mapOf("appName" to { "My App" }))
+      withoutGlobals.initialize()
+      withGlobals.initialize()
+      val resource = TranslationStringResource(ref)
+
+      assertEquals("Home", initialStringResourceValue(withoutGlobals, resource, "en"))
+      assertEquals("Home", initialStringResourceValue(withGlobals, resource, "en"))
+   }
+
+   @Test
+   fun initialStringResourceValue_should_keep_an_unregistered_token_in_a_plain_resource() = runTest {
+      val ref = TranslationRef(TEST_ORIGIN, "welcome")
+      val client = createClient(localeItems = listOf(TranslationItem(ref, "Welcome to {nobody}")))
+      client.initialize()
+
+      assertEquals("Welcome to {nobody}", initialStringResourceValue(client, TranslationStringResource(ref), "en"))
+   }
+
+   @Test
+   fun initialStringResourceValue_should_throw_for_an_unregistered_token_when_throwing_is_on() = runTest {
+      val ref = TranslationRef(TEST_ORIGIN, "welcome")
+      val client = createClient(
+         localeItems = listOf(TranslationItem(ref, "Welcome to {nobody}")),
+         throwOnPlaceholderError = true,
+      )
+      client.initialize()
+
+      assertFailsWith<PlaceholderSubstitutionException> {
+         initialStringResourceValue(client, TranslationStringResource(ref), "en")
+      }
+   }
+
+   @Test
+   fun initialStringResourceValue_should_render_the_fallback_of_a_missing_key() = runTest {
+      val client = createClient(localeItems = emptyList(), globalPlaceholders = mapOf("appName" to { "My App" }))
+      val resource = TranslationStringResource(TranslationRef(TEST_ORIGIN, "missing_key"), "Welcome to {appName}")
+
+      assertEquals("Welcome to My App", initialStringResourceValue(client, resource, "en"))
+      assertEquals(client.get(resource, "en"), initialStringResourceValue(client, resource, "en"))
+   }
 }
 
-private fun createClient(localeItems: List<TranslationItem>): TranslationToolsClient
+private fun createClient(
+   localeItems: List<TranslationItem>,
+   globalPlaceholders: Map<String, () -> String?> = emptyMap(),
+   throwOnPlaceholderError: Boolean = false,
+): TranslationToolsClient
 {
    return TranslationToolsClient(
       options = TranslationToolsClientOptions(
          apiKey = "test-api-key",
          currentLocaleProvider = { "en" },
          snapshotStore = NoOpSnapshotStore,
+         globalPlaceholders = globalPlaceholders,
+         throwOnPlaceholderError = throwOnPlaceholderError,
       ),
       api = FakeComposeTranslationToolsApi(
          metadata = ProjectMetadata(locales = listOf("en"), defaultLocale = "en"),

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21: Compose renders Global placeholders for a plain property
+
+Version 4.0.3 fixes `stringResource` with a plain `Translations.*` property, the property a Key keeps when it holds only Global placeholders. It showed `Welcome to {appName}` where `client.get` returned `Welcome to My App`. It now fills Global placeholders, and renders escapes such as `''`, the way `get` does, and shows the new text when the translation changes. A `{token}` with no registered Global placeholder shows as `{token}`, or throws `PlaceholderSubstitutionException` when `throwOnPlaceholderError` is on. A value with no `{` and no `'` shows unchanged.
+
+`getCached` and `observe` with a plain property still return the raw value. No API change.
+
 ## 2026-11-18: Android builds publish again
 
 Version 4.0.2 publishes the Android build of both `translationtools-client-kmp` and `translationtools-client-compose` again, as `translationtools-client-kmp-android` and `translationtools-client-compose-android`. Gradle on an Android app resolves them from the root artifacts the same way it resolves the JVM and iOS builds. The versions from 1.0.1 to 4.0.1 on Maven Central have no Android build, and Central does not allow a published version to change, so Android apps need 4.0.2 or later.

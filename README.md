@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.2/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.3/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **4.0.2** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.0.3** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.2")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.3")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.2")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.3")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.2" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.2" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.3" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.3" }
 ```
 
 ```kotlin
@@ -667,7 +667,8 @@ CompositionLocalProvider(
 ```
 
 `stringResource` with the value of a generated function renders its Placeholders and Plural and updates
-when the translation changes.
+when the translation changes. `stringResource` with a plain `Translations.*` property also fills Global
+placeholders, as `get` does, so a Key that holds only Global placeholders shows the resolved text.
 
 ## Sync Your XML With TranslationTools
 
