@@ -16,7 +16,7 @@ translationtools-client-kmp/
 │   │   ├── TranslationModels.kt
 │   │   ├── BoundTranslationStringResource.kt # resource + Placeholder values + Plural number, rendered by get/getCached/observe
 │   │   ├── TranslationToolsExceptions.kt
-│   │   ├── Platform.kt                     # expect formatWholeNumber (actuals in androidMain/jvmMain)
+│   │   ├── Platform.kt                     # expect formatWholeNumber, logPlaceholderWarning (actuals in androidMain/jvmMain/iosMain)
 │   │   └── placeholders/                   # Placeholder + Plural rendering
 │   │       ├── PlaceholderTokenParser.kt   # Placeholder tokens and the Plural parse
 │   │       ├── Plural.kt                   # parsed Plural, form pick

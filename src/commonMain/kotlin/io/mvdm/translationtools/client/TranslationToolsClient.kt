@@ -13,6 +13,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,6 +39,7 @@ public class TranslationToolsClient(
    private val projectMetadataFlow = MutableStateFlow<ProjectMetadata?>(null)
    private val translationsFlow = MutableStateFlow<Map<String, Map<TranslationRef, TranslationItem>>>(emptyMap())
    private val refreshStateFlow = MutableStateFlow(TranslationRefreshState())
+   private val reportedWarnings = MutableStateFlow<Set<String>>(emptySet())
    private var lastSuccessfulRefreshAt: Instant? = null
    private var clientId: String? = null
 
@@ -211,17 +213,18 @@ public class TranslationToolsClient(
       val resolvedLocale = resolveLocale(locale)
       val cachedItem = translationsFlow.value[resolvedLocale]?.get(validatedRef)
       if (cachedItem != null)
-         return renderOrFallback(cachedItem.value, resolvedLocale, defaultValue ?: validatedRef.key, placeholders, pluralNumber)
+         return renderOrFallback(cachedItem.value, validatedRef, resolvedLocale, defaultValue ?: validatedRef.key, placeholders, pluralNumber)
 
       val fetched = api.getTranslation(resolvedLocale, validatedRef, defaultValue)
       putItem(resolvedLocale, fetched)
       persist()
-      return renderOrFallback(fetched.value, resolvedLocale, defaultValue ?: validatedRef.key, placeholders, pluralNumber)
+      return renderOrFallback(fetched.value, validatedRef, resolvedLocale, defaultValue ?: validatedRef.key, placeholders, pluralNumber)
    }
 
    // A value from the cache or TranslationTools is in the lookup's Locale; the fallback text is in the default Locale's.
    private fun renderOrFallback(
       value: String?,
+      ref: TranslationRef,
       valueLocale: String,
       fallback: String,
       placeholders: Map<String, String?>,
@@ -229,9 +232,9 @@ public class TranslationToolsClient(
    ): String
    {
       return if (value != null)
-         render(value, placeholders, pluralNumber, valueLocale)
+         render(value, ref, placeholders, pluralNumber, valueLocale)
       else
-         render(fallback, placeholders, pluralNumber, defaultLocale())
+         render(fallback, ref, placeholders, pluralNumber, defaultLocale())
    }
 
    public suspend fun get(
@@ -285,10 +288,8 @@ public class TranslationToolsClient(
       }
    }
 
-   // Warnings are not visible from the public API yet (issue #9); tests set this to read them.
-   internal var warnSink: ((String) -> Unit)? = null
-
-   internal fun render(value: String, placeholders: Map<String, String?>, pluralNumber: Long?, pluralLocale: String): String
+   // [locale] is the Locale of [value]: it names the warning's Locale and picks a Plural's form.
+   private fun render(value: String, ref: TranslationRef, placeholders: Map<String, String?>, pluralNumber: Long?, locale: String): String
    {
       // A '{' may open a token and a '\'' may open an ICU escape the parser collapses ('' -> '), so either
       // forces the full pass. Without the apostrophe check a value like "It''s" would skip collapsing here and
@@ -302,10 +303,22 @@ public class TranslationToolsClient(
          globals = globals,
          knownSet = null,
          throwOnError = options.throwOnPlaceholderError,
-         warn = warnSink,
+         warn = { warnOnce("$it Key '${ref.key}', Origin '${ref.origin}', Locale '$locale'.") },
          pluralNumber = pluralNumber,
-         pluralLocale = pluralLocale,
+         pluralLocale = locale,
       )
+   }
+
+   private fun warnOnce(message: String)
+   {
+      if (message in reportedWarnings.getAndUpdate { it + message })
+         return
+
+      val handler = options.onPlaceholderWarning
+      if (handler != null)
+         handler(message)
+      else
+         logPlaceholderWarning(message)
    }
 
    public suspend fun get(resource: TranslationStringResource, locale: String? = null): String
@@ -337,6 +350,7 @@ public class TranslationToolsClient(
    {
       return renderOrFallback(
          getCached(resource.ref, locale),
+         resource.ref,
          resolveLocale(locale),
          resource.fallback ?: resource.ref.key,
          placeholders,
@@ -396,6 +410,7 @@ public class TranslationToolsClient(
          .map {
             renderOrFallback(
                it,
+               resource.resource.ref,
                resolveLocale(locale),
                resource.resource.fallback ?: resource.resource.ref.key,
                resource.placeholders,

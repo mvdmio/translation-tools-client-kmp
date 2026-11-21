@@ -1011,13 +1011,16 @@ class TranslationToolsClientTests
    @Test
    fun plural_without_a_number_should_render_the_other_form_with_hash_and_warn() = runTest {
       val warnings = mutableListOf<String>()
-      val client = pluralClient("en" to ENGLISH_CART, warnings = warnings)
+      val client = pluralClient("en" to ENGLISH_CART, onPlaceholderWarning = { warnings += it })
 
       val rendered = client.get(cartResource, "en")
 
       assertEquals("# items in {cartName}", rendered)
       assertEquals(
-         listOf("No number supplied for the Plural in this value.", "No value supplied for placeholder '{cartName}'."),
+         listOf(
+            "No number supplied for the Plural in this value. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'.",
+            "No value supplied for placeholder '{cartName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'.",
+         ),
          warnings,
       )
    }
@@ -1045,7 +1048,7 @@ class TranslationToolsClientTests
    @Test
    fun plural_should_not_warn_about_a_placeholder_only_a_form_the_number_did_not_pick_holds() = runTest {
       val warnings = mutableListOf<String>()
-      val client = pluralClient("en" to "{count, plural, =0 {Your cart is empty} other {# items in {cartName}}}", warnings = warnings)
+      val client = pluralClient("en" to "{count, plural, =0 {Your cart is empty} other {# items in {cartName}}}", onPlaceholderWarning = { warnings += it })
 
       val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(0).setPlaceholder("cartName", "Cart").render()
 
@@ -1056,18 +1059,21 @@ class TranslationToolsClientTests
    @Test
    fun plural_should_warn_and_keep_the_raw_placeholder_the_picked_form_needs() = runTest {
       val warnings = mutableListOf<String>()
-      val client = pluralClient("en" to ENGLISH_CART, warnings = warnings)
+      val client = pluralClient("en" to ENGLISH_CART, onPlaceholderWarning = { warnings += it })
 
       val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(1).render()
 
       assertEquals("1 item in {cartName}", rendered)
-      assertEquals(listOf("No value supplied for placeholder '{cartName}'."), warnings)
+      assertEquals(
+         listOf("No value supplied for placeholder '{cartName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
    }
 
    @Test
    fun plural_number_on_a_plain_value_should_be_ignored_silently() = runTest {
       val warnings = mutableListOf<String>()
-      val client = pluralClient("en" to "Hello {userName}!", warnings = warnings, throwOnPlaceholderError = true)
+      val client = pluralClient("en" to "Hello {userName}!", onPlaceholderWarning = { warnings += it }, throwOnPlaceholderError = true)
 
       val rendered = client.withPlaceholders(cartResource, "en").setPluralNumber(3).setPlaceholder("userName", "Sam").render()
 
@@ -1213,10 +1219,191 @@ class TranslationToolsClientTests
       assertEquals("Hello {userName}!", client.observe(cartResource, "en").first())
    }
 
+   @Test
+   fun a_missing_placeholder_should_reach_the_handler_with_key_origin_and_locale() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { warnings += it })
+
+      val rendered = client.get(cartRef, "en")
+
+      assertEquals("Hello {userName}", rendered)
+      assertEquals(
+         listOf("No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun the_same_warning_should_reach_the_handler_once_per_client() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { warnings += it })
+
+      repeat(3) { client.get(cartRef, "en") }
+
+      assertEquals(1, warnings.size)
+   }
+
+   @Test
+   fun the_same_broken_placeholder_in_two_locales_should_warn_once_per_locale() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", "nl" to "Hallo {userName}", onPlaceholderWarning = { warnings += it })
+
+      client.get(cartRef, "en")
+      client.get(cartRef, "nl")
+      client.get(cartRef, "nl")
+
+      assertEquals(
+         listOf(
+            "No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'.",
+            "No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'nl'.",
+         ),
+         warnings,
+      )
+   }
+
+   @Test
+   fun a_warning_for_the_fallback_text_should_name_the_default_locale() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("ja" to null, onPlaceholderWarning = { warnings += it })
+      val resource = TranslationStringResource(cartRef, fallback = "Hello {userName}")
+
+      val rendered = client.get(resource, "ja")
+
+      assertEquals("Hello {userName}", rendered)
+      assertEquals(
+         listOf("No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun a_global_placeholder_resolving_to_null_should_warn_with_key_origin_and_locale() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient(
+         "en" to "Welcome to {appName}",
+         globalPlaceholders = mapOf("appName" to { null }),
+         onPlaceholderWarning = { warnings += it },
+      )
+
+      val rendered = client.get(cartRef, "en")
+
+      assertEquals("Welcome to {appName}", rendered)
+      assertEquals(
+         listOf(
+            "Could not resolve global placeholder '{appName}' (resolver failed or returned null)." +
+               " Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'.",
+         ),
+         warnings,
+      )
+   }
+
+   @Test
+   fun a_binding_the_value_does_not_use_should_warn_with_key_origin_and_locale() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello", onPlaceholderWarning = { warnings += it })
+
+      val rendered = client.withPlaceholders(cartRef, "en").setPlaceholder("userName", "Sam").render()
+
+      assertEquals("Hello", rendered)
+      assertEquals(
+         listOf("Supplied placeholder 'userName' is not present in the value. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun a_plural_looked_up_by_ref_without_a_number_should_warn_with_key_origin_and_locale() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "{count, plural, one {# item} other {# items}}", onPlaceholderWarning = { warnings += it })
+
+      val rendered = client.get(cartRef, "en")
+
+      assertEquals("# items", rendered)
+      assertEquals(
+         listOf("No number supplied for the Plural in this value. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun getCached_with_a_bound_resource_should_warn_like_get() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { warnings += it })
+
+      val rendered = client.getCached(BoundTranslationStringResource(TranslationStringResource(cartRef)), "en")
+
+      assertEquals("Hello {userName}", rendered)
+      assertEquals(
+         listOf("No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun observe_with_a_bound_resource_should_warn_like_get() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { warnings += it })
+
+      val rendered = client.observe(BoundTranslationStringResource(TranslationStringResource(cartRef)), "en").first()
+
+      assertEquals("Hello {userName}", rendered)
+      assertEquals(
+         listOf("No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         warnings,
+      )
+   }
+
+   @Test
+   fun getCached_with_a_plain_resource_or_ref_should_not_warn() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { warnings += it })
+
+      assertEquals("Hello {userName}", client.getCached(cartResource, "en"))
+      assertEquals("Hello {userName}", client.getCached(cartRef, "en"))
+      assertEquals(emptyList(), warnings)
+   }
+
+   @Test
+   fun throwOnPlaceholderError_should_throw_the_plain_message_and_report_nothing() = runTest {
+      val warnings = mutableListOf<String>()
+      val client = pluralClient("en" to "Hello {userName}", throwOnPlaceholderError = true, onPlaceholderWarning = { warnings += it })
+
+      val thrown = assertFailsWith<PlaceholderSubstitutionException> { client.get(cartRef, "en") }
+
+      assertEquals("No value supplied for placeholder '{userName}'.", thrown.message)
+      assertEquals(emptyList(), warnings)
+   }
+
+   @Test
+   fun two_clients_should_each_report_the_same_warning_once() = runTest {
+      val first = mutableListOf<String>()
+      val second = mutableListOf<String>()
+      val firstClient = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { first += it })
+      val secondClient = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = { second += it })
+
+      repeat(2) {
+         firstClient.get(cartRef, "en")
+         secondClient.get(cartRef, "en")
+      }
+
+      assertEquals(
+         listOf("No value supplied for placeholder '{userName}'. Key 'cart_items', Origin '$TEST_ORIGIN', Locale 'en'."),
+         first,
+      )
+      assertEquals(first, second)
+   }
+
+   @Test
+   fun a_muting_handler_should_degrade_without_throwing() = runTest {
+      val client = pluralClient("en" to "Hello {userName}", onPlaceholderWarning = {})
+
+      assertEquals("Hello {userName}", client.get(cartRef, "en"))
+   }
+
    private suspend fun pluralClient(
       vararg values: Pair<String, String?>,
       api: FakeTranslationToolsApi? = null,
-      warnings: MutableList<String>? = null,
+      onPlaceholderWarning: ((String) -> Unit)? = null,
       globalPlaceholders: Map<String, () -> String?> = emptyMap(),
       throwOnPlaceholderError: Boolean = false,
    ): TranslationToolsClient {
@@ -1232,9 +1419,8 @@ class TranslationToolsClientTests
          backgroundRefreshEnabled = false,
          globalPlaceholders = globalPlaceholders,
          throwOnPlaceholderError = throwOnPlaceholderError,
+         onPlaceholderWarning = onPlaceholderWarning,
       )
-      if (warnings != null)
-         client.warnSink = { warnings += it }
 
       client.initialize()
       return client
@@ -1252,6 +1438,7 @@ class TranslationToolsClientTests
       backgroundScope: CoroutineScope? = null,
       globalPlaceholders: Map<String, () -> String?> = emptyMap(),
       throwOnPlaceholderError: Boolean = false,
+      onPlaceholderWarning: ((String) -> Unit)? = null,
       now: () -> Instant = { Instant.parse("2026-03-25T10:00:00Z") },
    ): TranslationToolsClient {
       val options = TranslationToolsClientOptions(
@@ -1265,6 +1452,7 @@ class TranslationToolsClientTests
          heartbeatInterval = heartbeatInterval,
          globalPlaceholders = globalPlaceholders,
          throwOnPlaceholderError = throwOnPlaceholderError,
+         onPlaceholderWarning = onPlaceholderWarning,
       )
 
       return if (backgroundScope != null) {

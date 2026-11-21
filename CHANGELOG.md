@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21: Placeholder warnings reach the platform log
+
+Version 4.1.0 shows the Placeholder warnings the runtime client already worked out. A missing Placeholder, a binding the value does not use, a Global placeholder whose resolver throws or returns null, and a Plural looked up without a number now write a warning to the platform log: Logcat on Android (tag `TranslationTools`, warning level), standard error on JVM, and `NSLog` on iOS. **An app that upgrades starts seeing these warnings with no code change.**
+
+Each warning ends with the Key, Origin, and Locale of the value rendered, such as `No value supplied for placeholder '{userName}'. Key 'home_title', Origin ':/strings.xml', Locale 'nl'.` Each distinct warning shows once per client. The new option `onPlaceholderWarning` sends warnings to your own handler instead of the platform log, and `onPlaceholderWarning = {}` mutes them. `throwOnPlaceholderError = true` behaves as before: it throws, with the same message, and writes no warning. In a local JVM unit test of an Android app, where Logcat is not available, the warning goes to standard output. No other API change.
+
 ## 2026-11-21: Compose renders Global placeholders for a plain property
 
 Version 4.0.3 fixes `stringResource` with a plain `Translations.*` property, the property a Key keeps when it holds only Global placeholders. It showed `Welcome to {appName}` where `client.get` returned `Welcome to My App`. It now fills Global placeholders, and renders escapes such as `''`, the way `get` does, and shows the new text when the translation changes. A `{token}` with no registered Global placeholder shows as `{token}`, or throws `PlaceholderSubstitutionException` when `throwOnPlaceholderError` is on. A value with no `{` and no `'` shows unchanged.

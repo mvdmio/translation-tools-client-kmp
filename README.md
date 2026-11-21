@@ -26,7 +26,7 @@ Current scope:
 Maven Central:
 
 ```text
-https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.0.3/
+https://repo1.maven.org/maven2/io/mvdm/translationtools/translationtools-client-kmp/4.1.0/
 ```
 
 Repository:
@@ -37,16 +37,16 @@ repositories {
 }
 ```
 
-Put the **4.0.3** runtime client on `commonMain`. Add the Compose helpers from the same
+Put the **4.1.0** runtime client on `commonMain`. Add the Compose helpers from the same
 release when you use composition locals / `stringResource`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.0.3")
+            implementation("io.mvdm.translationtools:translationtools-client-kmp:4.1.0")
             // optional
-            implementation("io.mvdm.translationtools:translationtools-client-compose:4.0.3")
+            implementation("io.mvdm.translationtools:translationtools-client-compose:4.1.0")
         }
     }
 }
@@ -56,8 +56,8 @@ Version catalog (same pair):
 
 ```toml
 [libraries]
-translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.0.3" }
-translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.0.3" }
+translationtools-client-kmp = { module = "io.mvdm.translationtools:translationtools-client-kmp", version = "4.1.0" }
+translationtools-client-compose = { module = "io.mvdm.translationtools:translationtools-client-compose", version = "4.1.0" }
 ```
 
 ```kotlin
@@ -426,6 +426,7 @@ Locale resolution order:
 | `heartbeatInterval` | `Duration` | `1.hours` | How often the heartbeat is sent. |
 | `globalPlaceholders` | `Map<String, () -> String?>` | `emptyMap()` | Ambient placeholder resolvers available to every key (see [Placeholders](#placeholders)). |
 | `throwOnPlaceholderError` | `Boolean` | `false` | Throw `PlaceholderSubstitutionException` on an unresolved placeholder instead of degrading to the raw token. |
+| `onPlaceholderWarning` | `((String) -> Unit)?` | `null` | Receives each Placeholder warning instead of the platform log. `null` keeps the platform log; `{}` mutes warnings (see [Placeholders](#placeholders)). |
 
 ## Declaring Keys at start
 
@@ -513,9 +514,17 @@ val client = TranslationTools.createClient(
 ```
 
 Failure behavior (a token with no binding and no registered global, or a global whose resolver throws
-or returns null): the default is **degrade** — render the raw `{token}`. Set
-`throwOnPlaceholderError = true` in options to throw a `PlaceholderSubstitutionException` instead. A
-per-call binding shadows a global of the same name.
+or returns null): the default is **degrade and warn** — render the raw `{token}` and write a warning
+that ends with the Key, Origin, and Locale of the value rendered, such as
+`No value supplied for placeholder '{userName}'. Key 'home_title', Origin ':/strings.xml', Locale 'nl'.`
+The warning goes to the platform log: Logcat on Android (tag `TranslationTools`, warning level), standard
+error on JVM, and `NSLog` on iOS, each line starting with `TranslationTools: ` except in Logcat. In a
+local JVM unit test of an Android app, where Logcat is not available, the line goes to standard output.
+Each distinct warning appears once per client, so a recomposing screen logs one line. Set
+`onPlaceholderWarning = { message -> ... }` in options to send warnings to your own logger instead (the
+message has no prefix), or `onPlaceholderWarning = {}` to mute them. Set `throwOnPlaceholderError = true`
+in options to throw a `PlaceholderSubstitutionException` instead, with no warning. A per-call binding
+shadows a global of the same name.
 
 `getCached(...)` and `observe(...)` with a plain `Translations.*` property return the raw value and do
 **not** substitute; hand them the value of a generated function, or use `get(...)` / `withPlaceholders(...)`,
